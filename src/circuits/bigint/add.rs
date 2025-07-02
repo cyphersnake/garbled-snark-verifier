@@ -35,7 +35,7 @@ pub fn optimized_sub_generic(
 
     let mut circuit = Circuit::empty();
 
-    let mut want: Rc<RefCell<Wire>> = new_wirex();
+    let mut want = new_wirex();
     for i in 0..len {
         circuit.add_wire(new_wirex());
         if i > 0 {
@@ -75,7 +75,7 @@ pub fn optimized_sub_generic(
                 a_wires[i].clone(),
                 circuit.0[i].clone(),
             ));
-            let new_want: Rc<RefCell<Wire>> = new_wirex();
+            let new_want = new_wirex();
             circuit.add(Gate::nimp(
                 b_wires[i].clone(),
                 a_wires[i].clone(),
