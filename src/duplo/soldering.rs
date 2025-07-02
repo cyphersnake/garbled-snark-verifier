@@ -2,6 +2,7 @@ use super::*;
 
 /// Represents a soldering instruction from an output wire to an input wire.
 /// Contains decommitment material required for evaluator to adjust labels.
+#[derive(Debug)]
 pub struct SolderingEdge {
     /// XOR of 0-keys: S = A0 ⊕ B0
     pub key_xor: S,

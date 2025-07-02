@@ -3,6 +3,7 @@ use crate::{
     core::gate::{GateCount, GateType},
 };
 
+#[derive(Clone)]
 pub struct Circuit(pub Wires, pub Vec<Gate>);
 
 impl Circuit {

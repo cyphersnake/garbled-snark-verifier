@@ -3,13 +3,17 @@
 use std::ops::BitXor;
 
 pub mod commitment;
+pub mod protocol;
 pub mod soldering;
 
-use crate::bag::{Circuit as SubCircuit, Wirex, S};
+use commitment::XorHomomorphic;
+
+use crate::bag::{Circuit as SubCircuit, S, Wirex};
 
 pub type Id = u128;
 pub type WireId = usize;
 
+#[derive(Clone, Debug)]
 pub struct Component {
     id: Id,
     inputs: Vec<WireId>,
@@ -19,6 +23,27 @@ pub struct Component {
 }
 
 impl Component {
+    pub fn garble(&self) -> GarbledComponent {
+        let garbled_table = self.sub_circuit.garbled_gates();
+
+        GarbledComponent {
+            inner: self.clone(),
+            garbled_table,
+            wire_key_commitments: self
+                .get_wire_keys()
+                .map(|label0| XorHomomorphic::commit(&label0))
+                .collect(),
+        }
+    }
+
+    pub fn wires_count(&self) -> usize {
+        self.sub_circuit.0.len()
+    }
+
+    pub fn get_wire_keys(&self) -> impl Iterator<Item = S> {
+        self.sub_circuit.0.iter().map(|wire| wire.borrow().label0)
+    }
+
     pub fn get_input_wire(&self, wire_id: usize) -> Option<&Wirex> {
         self.inputs
             .get(wire_id)
@@ -44,16 +69,20 @@ impl Component {
     }
 }
 
+#[derive(Debug)]
 pub struct GarbledComponent {
     /// Structural template (meta-information about components and relationships)
+    ///
     pub inner: Component,
+
+    /// Garbling table
+    pub garbled_table: Vec<Vec<S>>,
 
     /// Indicator bits σ
     //pub sigma_bits: Vec<bool>,
 
     /// XOR-homomomorphic commits for A⁰
     pub wire_key_commitments: Vec<commitment::XorHomomorphic>,
-
     ///// XOR-homomomorphic commits for σ
     //pub sigma_commitments: Vec<commitment::XorHomomorphic>,
 
@@ -65,8 +94,6 @@ pub struct GarbledComponent {
     //
     ///// Opening ∆ for Pedersen (needed to prove knowledge of ∆)
     //pub delta_opening: Option<commitment::Pedersen>,
-    /// Instance identifier (inside the bucket)
-    pub index_in_bucket: usize,
 }
 
 impl GarbledComponent {
@@ -77,4 +104,8 @@ impl GarbledComponent {
 
 pub struct Circuit {
     components: Vec<Component>,
+}
+
+pub fn run_duplo_protocol(circuit: Circuit, bucket_size: usize) -> Vec<bool> {
+    protocol::run_duplo_protocol(circuit, bucket_size)
 }
