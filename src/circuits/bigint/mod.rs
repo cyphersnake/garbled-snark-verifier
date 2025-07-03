@@ -9,7 +9,7 @@ pub mod mul;
 pub mod utils;
 
 #[derive(Debug)]
-pub struct BigIntImpl<const N_BITS: usize> {}
+pub struct BigIntImpl<const N_BITS: usize>;
 
 impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub const N_BITS: usize = N_BITS;

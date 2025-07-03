@@ -2,7 +2,7 @@ use crate::{
     bag::*,
     circuits::{
         basic::selector,
-        bigint::{U254, utils::bits_from_biguint},
+        bigint::{utils::bits_from_biguint, U254},
         bn254::fq::Fq,
     },
 };
@@ -79,7 +79,7 @@ pub trait Fp254Impl {
     fn add(a: Wires, b: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
         assert_eq!(b.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let mut wires_1 = circuit.extend(U254::add(a, b));
         let u = wires_1.pop().unwrap();
@@ -102,7 +102,7 @@ pub trait Fp254Impl {
 
     fn add_constant(a: Wires, b: ark_bn254::Fq) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         if b == ark_bn254::Fq::ZERO {
             circuit.add_wires(a);
@@ -130,7 +130,7 @@ pub trait Fp254Impl {
 
     fn neg(a: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let not_a = Fq::wires();
         for i in 0..Self::N_BITS {
@@ -148,7 +148,7 @@ pub trait Fp254Impl {
     fn sub(a: Wires, b: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
         assert_eq!(b.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let neg_b = circuit.extend(Self::neg(b));
         let result = circuit.extend(Self::add(a, neg_b));
@@ -158,7 +158,7 @@ pub trait Fp254Impl {
 
     fn double(a: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let shift_wire = Wire::new_rc();
         let x = a[0].clone();
@@ -188,7 +188,7 @@ pub trait Fp254Impl {
 
     fn half(a: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let selector = a[0].clone();
         let wires_1 = circuit.extend(U254::half(a.clone()));
@@ -203,7 +203,7 @@ pub trait Fp254Impl {
 
     fn triple(a: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let a_2 = circuit.extend(Self::double(a.clone()));
         let a_3 = circuit.extend(Self::add(a_2, a));
@@ -214,7 +214,7 @@ pub trait Fp254Impl {
     fn mul(a: Wires, b: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
         assert_eq!(b.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let a_or_zero = circuit.extend(Self::self_or_zero(a.clone(), b[Self::N_BITS - 1].clone()));
         let mut result = a_or_zero.clone();
@@ -228,7 +228,7 @@ pub trait Fp254Impl {
     }
 
     fn montgomery_reduce(x: Wires) -> Circuit {
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let x_low = x[..254].to_vec();
         let x_high = x[254..].to_vec();
@@ -261,7 +261,7 @@ pub trait Fp254Impl {
 
     fn mul_by_constant(a: Wires, b: ark_bn254::Fq) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         if b == ark_bn254::Fq::ZERO {
             circuit.add_wires(Fq::wires_set(ark_bn254::Fq::ZERO));
@@ -295,7 +295,7 @@ pub trait Fp254Impl {
     fn mul_by_constant_montgomery(a: Wires, b: ark_bn254::Fq) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
 
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         if b == ark_bn254::Fq::ZERO {
             circuit.add_wires(Fq::wires_set(ark_bn254::Fq::ZERO));
@@ -316,7 +316,7 @@ pub trait Fp254Impl {
 
     fn square(a: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let a_or_zero = circuit.extend(Self::self_or_zero(a.clone(), a[Self::N_BITS - 1].clone()));
         let mut result = a_or_zero.clone();
@@ -337,7 +337,7 @@ pub trait Fp254Impl {
 
     fn inverse(a: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let wires_1 = circuit.extend(U254::odd_part(a.clone()));
         let odd_part = wires_1[0..Self::N_BITS].to_vec();
@@ -506,7 +506,7 @@ pub trait Fp254Impl {
 
     fn inverse_montgomery(a: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let b = circuit.extend(Fq::inverse(a.clone()));
         let result = circuit.extend(Fq::mul_by_constant_montgomery(
@@ -521,7 +521,7 @@ pub trait Fp254Impl {
 
     fn div6(a: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let half = circuit.extend(Self::half(a.clone()));
         let mut result = Fq::wires();

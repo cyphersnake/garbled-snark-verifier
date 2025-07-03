@@ -11,7 +11,6 @@ use commitment::XorHomomorphic;
 use crate::bag::{Circuit as SubCircuit, S, Wirex};
 
 pub type Id = u128;
-pub type WireId = usize;
 
 #[derive(Clone, Debug)]
 pub struct Component {

@@ -6,7 +6,7 @@ pub mod bag {
     pub use crate::core::gate::Gate;
     pub use crate::core::s::S;
 
-    pub use crate::core::wire::{Wire, Wires, Wirex};
+    pub use crate::core::wire::{Wire, WireId, Wires};
 
     pub use crate::core::gate::GateCount;
 }

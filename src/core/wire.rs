@@ -2,8 +2,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::core::s::S;
-use crate::core::utils::{LIMB_LEN, N_LIMBS, convert_between_blake3_and_normal_form};
+use crate::core::utils::{convert_between_blake3_and_normal_form, LIMB_LEN, N_LIMBS};
 use bitvm::{bigint::U256, hash::blake3::blake3_compute_script_with_limb, treepp::*};
+
+pub type WireId = usize;
 
 #[derive(Clone, Debug)]
 pub struct Wire {
@@ -15,8 +17,27 @@ pub struct Wire {
     pub label: Option<S>,
 }
 
-pub type Wirex = Rc<RefCell<Wire>>;
-pub type Wires = Vec<Wirex>;
+#[derive(Default, Clone, Debug)]
+pub struct Wires(Vec<Wire>);
+
+impl Wires {
+    pub fn get(&self, index: usize) -> Option<&Wire> {
+        self.0.get(index)
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut Wire> {
+        self.0.get_mut(index)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn issue(&mut self) -> WireId {
+        self.0.push(Wire::new());
+        self.0.len() - 1
+    }
+}
 
 impl Default for Wire {
     fn default() -> Self {
@@ -40,22 +61,20 @@ impl Wire {
         }
     }
 
-    pub fn new_rc() -> Wirex {
-        Rc::new(RefCell::new(Self::new()))
-    }
-
-    pub fn new_rc_with(bit: bool) -> Wirex {
-        let mut _self = Self::new();
-        _self.set(bit);
-        Rc::new(RefCell::new(_self))
-    }
-
     pub fn select(&self, selector: bool) -> S {
-        if selector { self.label1 } else { self.label0 }
+        if selector {
+            self.label1
+        } else {
+            self.label0
+        }
     }
 
     pub fn select_hash(&self, selector: bool) -> S {
-        if selector { self.hash1 } else { self.hash0 }
+        if selector {
+            self.hash1
+        } else {
+            self.hash0
+        }
     }
 
     pub fn get_value(&self) -> bool {

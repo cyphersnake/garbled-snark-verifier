@@ -34,7 +34,7 @@ pub fn mul_generic(a_wires: &Wires, b_wires: &Wires, len: usize) -> Circuit {
     assert_eq!(a_wires.len(), len);
     assert_eq!(b_wires.len(), len);
 
-    let mut circuit = Circuit::empty();
+    let mut circuit = Circuit::default();
     for _ in 0..(len * 2) {
         let wire = Wire::new_rc_with(false);
         circuit.add_wire(wire)
@@ -64,14 +64,14 @@ pub fn mul_karatsuba_generic(a_wires: &Wires, b_wires: &Wires, len: usize) -> Ci
     if len < 5 {
         return mul_generic(a_wires, b_wires, len);
     }
-    let mut min_circuit = Circuit::empty();
+    let mut min_circuit = Circuit::default();
     let karatsuba_flag = get_karatsuba_decision_flag(len);
     if karatsuba_flag.is_none() || !karatsuba_flag.unwrap() {
         min_circuit = mul_generic(a_wires, b_wires, len);
     }
 
     if karatsuba_flag.is_none() || karatsuba_flag.unwrap() {
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
         circuit.0 = n_wires(len * 2);
         for i in 0..len * 2 {
             circuit.0[i].borrow_mut().set(false);
@@ -158,7 +158,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
         let mut c_bits = bits_from_biguint(&c);
         c_bits.truncate(N_BITS);
 
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         for _ in 0..(N_BITS * 2) {
             let wire = Wire::new_rc_with(false);
@@ -208,7 +208,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
         let mut c_bits = bits_from_biguint(&c);
         c_bits.truncate(N_BITS);
 
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         for _ in 0..power {
             let wire = Wire::new_rc_with(false);
@@ -249,8 +249,8 @@ mod tests {
     use num_bigint::BigUint;
 
     use crate::circuits::bigint::{
-        BigIntImpl, U254,
         utils::{biguint_from_bits, random_biguint_n_bits},
+        BigIntImpl, U254,
     };
 
     //tests are currently only for 254 bits

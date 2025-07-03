@@ -1,7 +1,13 @@
-use crate::bag::*;
-use crate::core::utils::{LIMB_LEN, N_LIMBS, bit_to_usize, convert_between_blake3_and_normal_form};
-use bitvm::{bigint::U256, hash::blake3::blake3_compute_script_with_limb, treepp::*};
 use std::ops::{Add, AddAssign};
+
+use bitvm::{bigint::U256, hash::blake3::blake3_compute_script_with_limb, treepp::*};
+
+use crate::{
+    bag::{Wire, WireId, Wires, S},
+    core::utils::{convert_between_blake3_and_normal_form, LIMB_LEN, N_LIMBS},
+};
+
+use super::utils::bit_to_usize;
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -18,14 +24,14 @@ pub enum GateType {
 
 #[derive(Clone, Debug)]
 pub struct Gate {
-    pub wire_a: Wirex,
-    pub wire_b: Wirex,
-    pub wire_c: Wirex,
+    pub wire_a: WireId,
+    pub wire_b: WireId,
+    pub wire_c: WireId,
     pub gate_type: GateType,
 }
 
 impl Gate {
-    pub fn new(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex, gate_type: GateType) -> Self {
+    pub fn new(wire_a: WireId, wire_b: WireId, wire_c: WireId, gate_type: GateType) -> Self {
         Self {
             wire_a,
             wire_b,
@@ -34,35 +40,35 @@ impl Gate {
         }
     }
 
-    pub fn and(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    pub fn and(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, GateType::And)
     }
 
-    pub fn nand(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    pub fn nand(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, GateType::Nand)
     }
 
-    pub fn or(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    pub fn or(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, GateType::Or)
     }
 
-    pub fn xor(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    pub fn xor(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, GateType::Xor)
     }
 
-    pub fn xnor(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    pub fn xnor(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, GateType::Xnor)
     }
 
-    pub fn not(wire_a: Wirex, wire_c: Wirex) -> Self {
+    pub fn not(wire_a: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a.clone(), wire_a.clone(), wire_c, GateType::Not)
     }
 
-    pub fn nimp(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    pub fn nimp(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a.clone(), wire_b.clone(), wire_c, GateType::Nimp)
     }
 
-    pub fn nsor(wire_a: Wirex, wire_b: Wirex, wire_c: Wirex) -> Self {
+    pub fn nsor(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a.clone(), wire_b.clone(), wire_c, GateType::Nsor)
     }
 
@@ -119,6 +125,22 @@ impl Gate {
         }
     }
 
+    fn get_a<'w>(&self, wires: &'w Wires) -> &'w Wire {
+        wires.get(self.wire_c).expect("TODO Add error handling")
+    }
+
+    fn get_b<'w>(&self, wires: &'w Wires) -> &'w Wire {
+        wires.get(self.wire_c).expect("TODO Add error handling")
+    }
+
+    fn get_c<'w>(&self, wires: &'w Wires) -> &'w Wire {
+        wires.get(self.wire_c).expect("TODO Add error handling")
+    }
+
+    fn get_mut_c<'s, 'w>(&'s self, wires: &'w mut Wires) -> &'w Wire {
+        wires.get_mut(self.wire_c).expect("TODO Add error handling")
+    }
+
     pub fn evaluation_script(&self) -> Script {
         match self.gate_type {
             GateType::And => script! { OP_BOOLAND },
@@ -132,38 +154,51 @@ impl Gate {
         }
     }
 
-    pub fn evaluate(&mut self) {
-        self.wire_c.borrow_mut().set((self.f())(
-            self.wire_a.borrow().get_value(),
-            self.wire_b.borrow().get_value(),
-        ));
+    pub fn evaluate(&self, wires: &mut Wires) {
+        let c = {
+            let a = wires.get(self.wire_a).expect("TODO Add error handling");
+            let b = wires.get(self.wire_b).expect("TODO Add error handling");
+
+            (self.f())(a.get_value(), b.get_value())
+        };
+
+        self.get_mut_c(wires).set(c)
     }
 
-    pub fn garbled(&self) -> Vec<S> {
+    pub fn garbled(&self, wires: &Wires) -> Vec<S> {
+        let a = self.get_a(wires);
+        let b = self.get_b(wires);
+        let c = self.get_c(wires);
+
         [(false, false), (true, false), (false, true), (true, true)]
             .iter()
             .map(|(i, j)| {
                 let k = (self.f())(*i, *j);
-                let a = self.wire_a.borrow().select(*i);
-                let b = self.wire_b.borrow().select(*j);
-                let c = self.wire_c.borrow().select(k);
+                let a = a.select(*i);
+                let b = b.select(*j);
+                let c = c.select(k);
                 S::hash_together(a, b) + c.neg()
             })
             .collect()
     }
 
-    pub fn check_garble(&self, garble: Vec<S>, bit: bool) -> (bool, S) {
-        let a = self.wire_a.borrow().get_label();
-        let b = self.wire_b.borrow().get_label();
-        let index = bit_to_usize(self.wire_a.borrow().get_value())
-            + 2 * bit_to_usize(self.wire_b.borrow().get_value());
+    pub fn check_garble(&self, garble: Vec<S>, bit: bool, wires: &Wires) -> (bool, S) {
+        let a = self.get_a(wires);
+        let b = self.get_a(wires);
+
+        let label_a = a.get_label();
+        let label_b = b.get_label();
+
+        let index = bit_to_usize(a.get_value()) + 2 * bit_to_usize(b.get_value());
+
         let row = garble[index];
-        let c = S::hash_together(a, b) + row.neg();
+        let c = S::hash_together(label_a, label_b) + row.neg();
         let hc = c.hash();
-        (hc == self.wire_c.borrow().select_hash(bit), c)
+
+        (hc == self.get_c(wires).select_hash(bit), c)
     }
 
-    pub fn script(&self, garbled: Vec<S>, correct: bool) -> Script {
+    pub fn script(&self, garbled: Vec<S>, correct: bool, wires: &Wires) -> Script {
         script! {                                                     // a bit_a b bit_b
             { N_LIMBS + 1 } OP_PICK                                   // a bit_a b bit_b bit_a
             OP_OVER                                                   // a bit_a b bit_b bit_a bit_b
@@ -172,9 +207,9 @@ impl Gate {
             for _ in 0..N_LIMBS { {2 * N_LIMBS} OP_PICK }             // a bit_a b bit_b a b | bit_a bit_b
             { U256::toaltstack() } { U256::toaltstack() }             // a bit_a b bit_b | a b bit_a bit_b
             OP_TOALTSTACK { U256::toaltstack() }                      // a bit_a | b bit_b a b bit_a bit_b
-            { self.wire_a.borrow().commitment_script() } OP_VERIFY    // | b bit_b a b bit_a bit_b
+            { self.get_a(wires).commitment_script() } OP_VERIFY    // | b bit_b a b bit_a bit_b
             { U256::fromaltstack() } OP_FROMALTSTACK                  // b bit_b | a b bit_a bit_b
-            { self.wire_b.borrow().commitment_script() } OP_VERIFY    // | a b bit_a bit_b
+            { self.get_b(wires).commitment_script() } OP_VERIFY    // | a b bit_a bit_b
             { U256::fromaltstack() }                                  // a | b bit_a bit_b
             { convert_between_blake3_and_normal_form() }              // a' | b bit_a bit_b
             { U256::fromaltstack() }                                  // a' b | bit_a bit_b

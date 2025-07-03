@@ -1,62 +1,92 @@
+use std::iter;
+
 use crate::{
     bag::*,
     core::gate::{GateCount, GateType},
 };
 
-#[derive(Clone, Debug)]
-pub struct Circuit(pub Wires, pub Vec<Gate>);
+#[derive(Clone, Debug, Default)]
+pub struct Circuit {
+    pub wires: Wires,
+    pub gates: Vec<Gate>,
+    pub gate_counts: GateCount,
+}
 
 impl Circuit {
-    pub fn empty() -> Self {
-        Self(Vec::new(), Vec::new())
-    }
-
     pub fn new(wires: Wires, gates: Vec<Gate>) -> Self {
-        Self(wires, gates)
-    }
+        let mut gate_counts = GateCount::default();
 
-    pub fn garbled_gates(&self) -> Vec<Vec<S>> {
-        self.1.iter().map(|gate| gate.garbled()).collect()
-    }
-
-    pub fn extend(&mut self, circuit: Self) -> Wires {
-        self.1.extend(circuit.1);
-        circuit.0
-    }
-
-    pub fn add(&mut self, gate: Gate) {
-        self.1.push(gate);
-    }
-
-    pub fn add_wire(&mut self, wire: Wirex) {
-        self.0.push(wire);
-    }
-
-    pub fn add_wires(&mut self, wires: Wires) {
-        self.0.extend(wires);
-    }
-
-    pub fn gate_count(&self) -> usize {
-        self.1.len()
-    }
-
-    pub fn gate_counts(&self) -> GateCount {
-        let mut gc = GateCount::default();
-
-        for gate in self.1.iter() {
+        for gate in gates.iter() {
             match gate.gate_type {
-                GateType::And => gc.and += 1,
-                GateType::Or => gc.or += 1,
-                GateType::Xor => gc.xor += 1,
-                GateType::Nand => gc.nand += 1,
-                GateType::Not => gc.not += 1,
-                GateType::Xnor => gc.xnor += 1,
-                GateType::Nimp => gc.nimp += 1,
-                GateType::Nsor => gc.nsor += 1,
+                GateType::And => gate_counts.and += 1,
+                GateType::Or => gate_counts.or += 1,
+                GateType::Xor => gate_counts.xor += 1,
+                GateType::Nand => gate_counts.nand += 1,
+                GateType::Not => gate_counts.not += 1,
+                GateType::Xnor => gate_counts.xnor += 1,
+                GateType::Nimp => gate_counts.nimp += 1,
+                GateType::Nsor => gate_counts.nsor += 1,
             }
         }
 
-        gc
+        Self {
+            wires,
+            gates,
+            gate_counts,
+        }
+    }
+
+    pub fn garbled_gates(&self) -> Vec<Vec<S>> {
+        self.gates
+            .iter()
+            .map(|gate| gate.garbled(&self.wires))
+            .collect()
+    }
+
+    pub fn extend(&mut self, circuit: Self) -> Wires {
+        todo!("understand logic")
+        //self.gates.extend(circuit.gates);
+        //circuit.wires
+    }
+
+    pub fn add(&mut self, gate: Gate) {
+        let gc = &mut self.gate_counts;
+        match gate.gate_type {
+            GateType::And => gc.and += 1,
+            GateType::Or => gc.or += 1,
+            GateType::Xor => gc.xor += 1,
+            GateType::Nand => gc.nand += 1,
+            GateType::Not => gc.not += 1,
+            GateType::Xnor => gc.xnor += 1,
+            GateType::Nimp => gc.nimp += 1,
+            GateType::Nsor => gc.nsor += 1,
+        }
+
+        self.gates.push(gate);
+    }
+
+    pub fn add_wire(&mut self) -> WireId {
+        self.wires.issue()
+    }
+
+    pub fn add_wires(&mut self, count: usize) -> Vec<WireId> {
+        iter::repeat_with(|| self.wires.issue())
+            .take(count)
+            .collect()
+    }
+
+    pub fn gate_count(&self) -> usize {
+        self.gates.len()
+    }
+
+    pub fn gate_counts(&self) -> &GateCount {
+        &self.gate_counts
+    }
+
+    pub fn evaluate(&mut self) {
+        for gate in self.gates.iter() {
+            gate.evaluate(&mut self.wires);
+        }
     }
 }
 
@@ -65,7 +95,7 @@ mod tests {
     use crate::core::{bristol::parser, s::S};
     use bitvm::bigint::U256;
     use bitvm::treepp::*;
-    use rand::{Rng, rng};
+    use rand::{rng, Rng};
     use serial_test::serial;
     use std::iter::zip;
 

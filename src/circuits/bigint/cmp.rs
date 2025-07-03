@@ -6,7 +6,7 @@ use num_bigint::BigUint;
 
 pub fn self_or_zero_generic(a: Wires, s: Wirex, len: usize) -> Circuit {
     assert_eq!(a.len(), len);
-    let mut circuit = Circuit::empty();
+    let mut circuit = Circuit::default();
 
     let mut result = vec![];
     for i in 0..len {
@@ -21,7 +21,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn equal(a: Wires, b: Wires) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
         assert_eq!(b.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let c = Self::wires();
         for i in 0..N_BITS {
@@ -34,7 +34,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
     pub fn equal_constant(a: Wires, b: &BigUint) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let b_bits = bits_from_biguint(b);
         let mut output = a[0].clone();
@@ -66,7 +66,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn greater_than(a: Wires, b: Wires) -> Circuit {
         assert_eq!(a.len(), N_BITS);
         assert_eq!(b.len(), N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let not_b = Self::wires();
 
@@ -81,7 +81,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
     pub fn less_than_constant(a: Wires, b: &BigUint) -> Circuit {
         assert_eq!(a.len(), N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let not_a = Self::wires();
 
@@ -97,7 +97,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn select(a: Wires, b: Wires, s: Wirex) -> Circuit {
         assert_eq!(a.len(), N_BITS);
         assert_eq!(b.len(), N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         for i in 0..N_BITS {
             let wires = circuit.extend(selector(a[i].clone(), b[i].clone(), s.clone()));
@@ -127,7 +127,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
             assert_eq!(x.len(), N_BITS);
         }
         assert_eq!(s.len(), w);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         for i in 0..N_BITS {
             let ith_wires = a.iter().map(|x| x[i].clone()).collect();

@@ -8,10 +8,28 @@ use crate::{
 };
 use num_bigint::BigUint;
 
+impl Circuit {
+    pub fn add_generic(&mut self, a: WireId, b: WireId, len: usize) -> WireId {
+        assert_eq!(a.len(), len);
+        assert_eq!(b.len(), len);
+        let mut circuit = Circuit::default();
+        let wires = circuit.extend(half_adder(a[0].clone(), b[0].clone()));
+        circuit.add_wire(wires[0].clone());
+        let mut carry = wires[1].clone();
+        for i in 1..len {
+            let wires = circuit.extend(full_adder(a[i].clone(), b[i].clone(), carry));
+            circuit.add_wire(wires[0].clone());
+            carry = wires[1].clone();
+        }
+        circuit.add_wire(carry);
+        circuit
+    }
+}
+
 pub fn add_generic(a: Wires, b: Wires, len: usize) -> Circuit {
     assert_eq!(a.len(), len);
     assert_eq!(b.len(), len);
-    let mut circuit = Circuit::empty();
+    let mut circuit = Circuit::default();
     let wires = circuit.extend(half_adder(a[0].clone(), b[0].clone()));
     circuit.add_wire(wires[0].clone());
     let mut carry = wires[1].clone();
@@ -33,7 +51,7 @@ pub fn optimized_sub_generic(
     assert_eq!(a_wires.len(), len);
     assert_eq!(b_wires.len(), len);
 
-    let mut circuit = Circuit::empty();
+    let mut circuit = Circuit::default();
 
     let mut want = Wire::new_rc();
     for i in 0..len {
@@ -102,7 +120,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn add_constant(a: Wires, b: &BigUint) -> Circuit {
         assert_eq!(a.len(), N_BITS);
         assert_ne!(b, &BigUint::ZERO);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let b_bits = bits_from_biguint(b);
 
@@ -143,7 +161,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn add_without_carry(a: Wires, b: Wires) -> Circuit {
         assert_eq!(a.len(), N_BITS);
         assert_eq!(b.len(), N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
         let wires = circuit.extend(half_adder(a[0].clone(), b[0].clone()));
         circuit.add_wire(wires[0].clone());
         let mut carry = wires[1].clone();
@@ -158,7 +176,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn add_constant_without_carry(a: Wires, b: &BigUint) -> Circuit {
         assert_eq!(a.len(), N_BITS);
         assert_ne!(b, &BigUint::ZERO);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
 
         let b_bits = bits_from_biguint(b);
 
@@ -202,7 +220,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn sub_without_borrow(a: Wires, b: Wires) -> Circuit {
         assert_eq!(a.len(), N_BITS);
         assert_eq!(b.len(), N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
         let wires = circuit.extend(half_subtracter(a[0].clone(), b[0].clone()));
         circuit.add_wire(wires[0].clone());
         let mut borrow = wires[1].clone();
@@ -216,7 +234,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
     pub fn double(a: Wires) -> Circuit {
         assert_eq!(a.len(), N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
         let not_a = Wire::new_rc();
         let zero_wire = Wire::new_rc();
         circuit.add(Gate::not(a[0].clone(), not_a.clone()));
@@ -228,9 +246,13 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
     pub fn double_without_overflow(a: Wires) -> Circuit {
         assert_eq!(a.len(), N_BITS);
-        let mut circuit = Circuit::empty();
-        let not_a = Wire::new_rc();
-        let zero_wire = Wire::new_rc();
+        let mut circuit = Circuit::default();
+
+        let not_a = circuit.add_wire();
+        let not_a = circuit.add_wire();
+
+        let zero_wire = circuit.add_wire();
+
         circuit.add(Gate::not(a[0].clone(), not_a.clone()));
         circuit.add(Gate::and(a[0].clone(), not_a.clone(), zero_wire.clone()));
         circuit.add_wire(zero_wire);
@@ -240,7 +262,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
     pub fn half(a: Wires) -> Circuit {
         assert_eq!(a.len(), N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
         let not_a = Wire::new_rc();
         let zero_wire = Wire::new_rc();
         circuit.add(Gate::not(a[0].clone(), not_a.clone()));
@@ -252,7 +274,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
     pub fn odd_part(a: Wires) -> Circuit {
         assert_eq!(a.len(), N_BITS);
-        let mut circuit = Circuit::empty();
+        let mut circuit = Circuit::default();
         let mut select = Self::wires();
         let not_select = Self::wires();
         select[0] = a[0].clone();
@@ -303,10 +325,10 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 #[cfg(test)]
 mod tests {
     use crate::circuits::bigint::{
-        U254,
         utils::{
             biguint_from_bits, biguint_from_wires, biguint_two_pow_254, random_biguint_n_bits,
         },
+        U254,
     };
     use num_bigint::BigUint;
     use std::str::FromStr;
