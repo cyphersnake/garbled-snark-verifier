@@ -27,12 +27,12 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
         for i in 0..N_BITS {
             circuit.add(Gate::xor(a[i].clone(), b[i].clone(), c[i].clone()));
         }
-        let result = circuit.extend(Self::equal_constant(c, BigUint::ZERO));
+        let result = circuit.extend(Self::equal_constant(c, &BigUint::ZERO));
         circuit.add_wires(result);
         circuit
     }
 
-    pub fn equal_constant(a: Wires, b: BigUint) -> Circuit {
+    pub fn equal_constant(a: Wires, b: &BigUint) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
         let mut circuit = Circuit::empty();
 
@@ -79,7 +79,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
         circuit
     }
 
-    pub fn less_than_constant(a: Wires, b: BigUint) -> Circuit {
+    pub fn less_than_constant(a: Wires, b: &BigUint) -> Circuit {
         assert_eq!(a.len(), N_BITS);
         let mut circuit = Circuit::empty();
 
@@ -110,7 +110,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
         self_or_zero_generic(a, s, N_BITS)
     }
 
-    pub fn self_or_zero_constant(a: BigUint, s: Wirex) -> Circuit {
+    pub fn self_or_zero_constant(a: &BigUint, s: Wirex) -> Circuit {
         let mut bit_wires = vec![];
         let mut bits = bits_from_biguint(a);
         bits.resize(Self::N_BITS, false);
@@ -124,7 +124,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn multiplexer(a: Vec<Wires>, s: Wires, w: usize) -> Circuit {
         let n = 2_usize.pow(w.try_into().unwrap());
         assert_eq!(a.len(), n);
-        for x in a.clone() {
+        for x in a.iter() {
             assert_eq!(x.len(), N_BITS);
         }
         assert_eq!(s.len(), w);
@@ -142,13 +142,13 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, rng};
+    use rand::{rng, Rng};
     use std::str::FromStr;
 
     use super::*;
     use crate::circuits::bigint::{
-        U254,
         utils::{biguint_from_wires, random_biguint_n_bits},
+        U254,
     };
 
     #[test]
@@ -156,8 +156,8 @@ mod tests {
         let a = random_biguint_n_bits(254);
         let b = random_biguint_n_bits(254);
         let circuit = U254::equal(
-            U254::wires_set_from_number(a.clone()),
-            U254::wires_set_from_number(b.clone()),
+            U254::wires_set_from_number(&a),
+            U254::wires_set_from_number(&b),
         );
         circuit.gate_counts().print();
         for mut gate in circuit.1 {
@@ -167,8 +167,8 @@ mod tests {
 
         let a = random_biguint_n_bits(254);
         let circuit = U254::equal(
-            U254::wires_set_from_number(a.clone()),
-            U254::wires_set_from_number(a.clone()),
+            U254::wires_set_from_number(&a),
+            U254::wires_set_from_number(&a),
         );
         circuit.gate_counts().print();
         for mut gate in circuit.1 {
@@ -177,7 +177,7 @@ mod tests {
         assert!(circuit.0[0].borrow().get_value());
 
         let a = random_biguint_n_bits(254);
-        let circuit = U254::equal_constant(U254::wires_set_from_number(a.clone()), b.clone());
+        let circuit = U254::equal_constant(U254::wires_set_from_number(&a), &b);
         circuit.gate_counts().print();
         for mut gate in circuit.1 {
             gate.evaluate();
@@ -190,8 +190,8 @@ mod tests {
         let a = random_biguint_n_bits(254);
         let b = random_biguint_n_bits(254);
         let circuit = U254::greater_than(
-            U254::wires_set_from_number(a.clone()),
-            U254::wires_set_from_number(b.clone()),
+            U254::wires_set_from_number(&a),
+            U254::wires_set_from_number(&b),
         );
         circuit.gate_counts().print();
         for mut gate in circuit.1 {
@@ -201,8 +201,8 @@ mod tests {
 
         let a = random_biguint_n_bits(254);
         let circuit = U254::greater_than(
-            U254::wires_set_from_number(a.clone()),
-            U254::wires_set_from_number(a.clone()),
+            U254::wires_set_from_number(&a),
+            U254::wires_set_from_number(&a),
         );
         circuit.gate_counts().print();
         for mut gate in circuit.1 {
@@ -212,8 +212,8 @@ mod tests {
 
         let a = random_biguint_n_bits(254);
         let circuit = U254::greater_than(
-            U254::wires_set_from_number(a.clone() + BigUint::from_str("1").unwrap()),
-            U254::wires_set_from_number(a.clone()),
+            U254::wires_set_from_number(&(&a + BigUint::from_str("1").unwrap())),
+            U254::wires_set_from_number(&a),
         );
         circuit.gate_counts().print();
         for mut gate in circuit.1 {
@@ -226,7 +226,7 @@ mod tests {
     fn test_less_than_constant() {
         let a = random_biguint_n_bits(254);
         let b = random_biguint_n_bits(254);
-        let circuit = U254::less_than_constant(U254::wires_set_from_number(a.clone()), b.clone());
+        let circuit = U254::less_than_constant(U254::wires_set_from_number(&a), &b);
         circuit.gate_counts().print();
         for mut gate in circuit.1 {
             gate.evaluate();
@@ -241,8 +241,8 @@ mod tests {
         let s = new_wirex();
         s.borrow_mut().set(true);
         let circuit = U254::select(
-            U254::wires_set_from_number(a.clone()),
-            U254::wires_set_from_number(b.clone()),
+            U254::wires_set_from_number(&a),
+            U254::wires_set_from_number(&b),
             s,
         );
         circuit.gate_counts().print();
@@ -259,7 +259,7 @@ mod tests {
 
         let s = new_wirex();
         s.borrow_mut().set(true);
-        let circuit = U254::self_or_zero(U254::wires_set_from_number(a.clone()), s);
+        let circuit = U254::self_or_zero(U254::wires_set_from_number(&a), s);
         circuit.gate_counts().print();
         for mut gate in circuit.1 {
             gate.evaluate();
@@ -269,7 +269,7 @@ mod tests {
 
         let s = new_wirex();
         s.borrow_mut().set(false);
-        let circuit = U254::self_or_zero(U254::wires_set_from_number(a.clone()), s);
+        let circuit = U254::self_or_zero(U254::wires_set_from_number(&a), s);
         for mut gate in circuit.1 {
             gate.evaluate();
         }
@@ -285,7 +285,7 @@ mod tests {
         let s: Wires = (0..w).map(|_| new_wirex()).collect();
 
         let mut a_wires = Vec::new();
-        for e in a.clone() {
+        for e in a.iter() {
             a_wires.push(U254::wires_set_from_number(e));
         }
 

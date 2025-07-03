@@ -324,7 +324,7 @@ impl G1Projective {
     pub fn multiplexer(a: Vec<Wires>, s: Wires, w: usize) -> Circuit {
         let n = 2_usize.pow(w.try_into().unwrap());
         assert_eq!(a.len(), n);
-        for x in a.clone() {
+        for x in a.iter() {
             assert_eq!(x.len(), Self::N_BITS);
         }
         assert_eq!(s.len(), w);
@@ -919,8 +919,8 @@ mod tests {
         let s: Wires = (0..w).map(|_| new_wirex()).collect();
 
         let mut a_wires = Vec::new();
-        for e in a.clone() {
-            a_wires.push(G1Projective::wires_set(e));
+        for e in a.iter() {
+            a_wires.push(G1Projective::wires_set(*e));
         }
 
         let mut u = 0;
@@ -951,8 +951,8 @@ mod tests {
         let s: Wires = (0..w).map(|_| new_wirex()).collect();
 
         let mut a_wires = Vec::new();
-        for e in a.clone() {
-            a_wires.push(G1Projective::wires_set(e));
+        for e in a.iter() {
+            a_wires.push(G1Projective::wires_set(*e));
         }
 
         let mut u = 0;

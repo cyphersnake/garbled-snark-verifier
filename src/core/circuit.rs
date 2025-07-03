@@ -40,36 +40,22 @@ impl Circuit {
     }
 
     pub fn gate_counts(&self) -> GateCount {
-        let mut and = 0;
-        let mut or = 0;
-        let mut xor = 0;
-        let mut nand = 0;
-        let mut not = 0;
-        let mut xnor = 0;
-        let mut nimp = 0;
-        let mut nsor = 0;
-        for gate in self.1.clone() {
+        let mut gc = GateCount::default();
+
+        for gate in self.1.iter() {
             match gate.gate_type {
-                GateType::And => and += 1,
-                GateType::Or => or += 1,
-                GateType::Xor => xor += 1,
-                GateType::Nand => nand += 1,
-                GateType::Not => not += 1,
-                GateType::Xnor => xnor += 1,
-                GateType::Nimp => nimp += 1,
-                GateType::Nsor => nsor += 1,
+                GateType::And => gc.and += 1,
+                GateType::Or => gc.or += 1,
+                GateType::Xor => gc.xor += 1,
+                GateType::Nand => gc.nand += 1,
+                GateType::Not => gc.not += 1,
+                GateType::Xnor => gc.xnor += 1,
+                GateType::Nimp => gc.nimp += 1,
+                GateType::Nsor => gc.nsor += 1,
             }
         }
-        GateCount {
-            and,
-            or,
-            xor,
-            nand,
-            not,
-            xnor,
-            nimp,
-            nsor,
-        }
+
+        gc
     }
 }
 
@@ -78,7 +64,7 @@ mod tests {
     use crate::core::{bristol::parser, s::S};
     use bitvm::bigint::U256;
     use bitvm::treepp::*;
-    use rand::{Rng, rng};
+    use rand::{rng, Rng};
     use serial_test::serial;
     use std::iter::zip;
 

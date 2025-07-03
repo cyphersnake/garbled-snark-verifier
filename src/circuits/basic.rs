@@ -281,7 +281,7 @@ mod tests {
         let a: Wires = (0..n).map(|_| new_wirex()).collect();
         let s: Wires = (0..w).map(|_| new_wirex()).collect();
 
-        for wire in a.clone() {
+        for wire in a.iter() {
             wire.borrow_mut().set(rng().random());
         }
 

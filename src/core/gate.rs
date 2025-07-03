@@ -3,9 +3,10 @@ use crate::core::utils::{LIMB_LEN, N_LIMBS, bit_to_usize, convert_between_blake3
 use bitvm::{bigint::U256, hash::blake3::blake3_compute_script_with_limb, treepp::*};
 use std::ops::{Add, AddAssign};
 
-#[derive(Clone, Debug, PartialEq)]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GateType {
-    And,
+    And = 0,
     Or,
     Xor,
     Nand,
@@ -265,6 +266,7 @@ impl Gate {
     }
 }
 
+#[derive(Default)]
 pub struct GateCount {
     pub and: usize,
     pub or: usize,

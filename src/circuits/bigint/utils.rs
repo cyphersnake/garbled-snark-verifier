@@ -22,7 +22,7 @@ pub fn random_biguint_n_bits(n_bits: usize) -> BigUint {
         % BigUint::from_str("2").unwrap().pow(n_bits as u32)
 }
 
-pub fn bits_from_biguint(u: BigUint) -> Vec<bool> {
+pub fn bits_from_biguint(u: &BigUint) -> Vec<bool> {
     let mut bytes = u.to_bytes_le();
     bytes.extend(vec![0_u8; 32 - bytes.len()]);
     let mut bits = Vec::new();
@@ -89,7 +89,7 @@ pub mod tests {
     fn test_random_biguint() {
         let u = random_biguint();
         println!("u: {:?}", u);
-        let b = bits_from_biguint(u.clone());
+        let b = bits_from_biguint(&u);
         let v = biguint_from_bits(b);
         println!("v: {:?}", v);
         assert_eq!(u, v);
@@ -99,7 +99,7 @@ pub mod tests {
     fn test_neg_pos_decomposition() {
         for _ in 0..10 {
             let u = random_biguint();
-            let b = bits_from_biguint(u.clone());
+            let b = bits_from_biguint(&u);
             let d = change_to_neg_pos_decomposition(b);
             let len = d.len();
             let mut res = BigUint::ZERO;

@@ -35,7 +35,7 @@ pub trait Fp254Impl {
     }
 
     fn modulus_as_bits() -> Vec<bool> {
-        bits_from_biguint(Self::modulus_as_biguint())
+        bits_from_biguint(&Self::modulus_as_biguint())
     }
 
     fn not_modulus_as_biguint() -> BigUint {
@@ -47,7 +47,7 @@ pub trait Fp254Impl {
     }
 
     fn not_modulus_as_bits() -> Vec<bool> {
-        bits_from_biguint(Self::not_modulus_as_biguint())
+        bits_from_biguint(&Self::not_modulus_as_biguint())
     }
 
     fn half_modulus() -> BigUint;
@@ -69,11 +69,11 @@ pub trait Fp254Impl {
     }
 
     fn equal_constant(a: Wires, b: ark_bn254::Fq) -> Circuit {
-        U254::equal_constant(a, BigUint::from(b))
+        U254::equal_constant(a, &BigUint::from(b))
     }
 
     fn equal_zero(a: Wires) -> Circuit {
-        U254::equal_constant(a, BigUint::ZERO)
+        U254::equal_constant(a, &BigUint::ZERO)
     }
 
     fn add(a: Wires, b: Wires) -> Circuit {
@@ -84,13 +84,13 @@ pub trait Fp254Impl {
         let mut wires_1 = circuit.extend(U254::add(a, b));
         let u = wires_1.pop().unwrap();
         let c = Self::not_modulus_as_biguint();
-        let mut wires_2 = circuit.extend(U254::add_constant(wires_1.clone(), c));
+        let mut wires_2 = circuit.extend(U254::add_constant(wires_1.clone(), &c));
         wires_2.pop();
         let not_u = new_wirex();
         circuit.add(Gate::not(u.clone(), not_u.clone()));
         let v = circuit.extend(U254::less_than_constant(
             wires_1.clone(),
-            Self::modulus_as_biguint(),
+            &Self::modulus_as_biguint(),
         ))[0]
             .clone();
         let s = new_wirex();
@@ -109,16 +109,16 @@ pub trait Fp254Impl {
             return circuit;
         }
 
-        let mut wires_1 = circuit.extend(U254::add_constant(a.clone(), BigUint::from(b)));
+        let mut wires_1 = circuit.extend(U254::add_constant(a.clone(), &BigUint::from(b)));
         let u = wires_1.pop().unwrap();
         let c = Self::not_modulus_as_biguint();
-        let mut wires_2 = circuit.extend(U254::add_constant(wires_1.clone(), c));
+        let mut wires_2 = circuit.extend(U254::add_constant(wires_1.clone(), &c));
         wires_2.pop();
         let not_u = new_wirex();
         circuit.add(Gate::not(u.clone(), not_u.clone()));
         let v = circuit.extend(U254::less_than_constant(
             wires_1.clone(),
-            Self::modulus_as_biguint(),
+            &Self::modulus_as_biguint(),
         ))[0]
             .clone();
         let s = new_wirex();
@@ -170,13 +170,13 @@ pub trait Fp254Impl {
         let mut shifted_wires = vec![shift_wire];
         shifted_wires.extend(aa);
         let c = Self::not_modulus_as_biguint();
-        let mut wires_2 = circuit.extend(U254::add_constant(shifted_wires.clone(), c));
+        let mut wires_2 = circuit.extend(U254::add_constant(shifted_wires.clone(), &c));
         wires_2.pop();
         let not_u = new_wirex();
         circuit.add(Gate::not(u.clone(), not_u.clone()));
         let v = circuit.extend(U254::less_than_constant(
             shifted_wires.clone(),
-            Self::modulus_as_biguint(),
+            &Self::modulus_as_biguint(),
         ))[0]
             .clone();
         let s = new_wirex();
@@ -194,7 +194,7 @@ pub trait Fp254Impl {
         let wires_1 = circuit.extend(U254::half(a.clone()));
         let wires_2 = circuit.extend(U254::add_constant_without_carry(
             wires_1.clone(),
-            Self::half_modulus(),
+            &Self::half_modulus(),
         ));
         let result = circuit.extend(U254::select(wires_2, wires_1, selector));
         circuit.add_wires(result);
@@ -241,7 +241,7 @@ pub trait Fp254Impl {
             circuit.extend(U254::mul_by_constant(q, Self::modulus_as_biguint()))[254..508].to_vec();
         let bound_check = circuit.extend(U254::greater_than(sub.clone(), x_high.clone()));
         let subtract_if_too_much = circuit.extend(U254::self_or_zero_constant(
-            Self::modulus_as_biguint(),
+            &Self::modulus_as_biguint(),
             bound_check[0].clone(),
         ));
         let new_sub = circuit.extend(U254::optimized_sub(sub, subtract_if_too_much, false));
@@ -383,7 +383,7 @@ pub trait Fp254Impl {
             let s1 = circuit.extend(U254::double_without_overflow(s.clone()));
             let k1 = circuit.extend(U254::add_constant_without_carry(
                 k.clone(),
-                BigUint::from_str("1").unwrap(),
+                &BigUint::from_str("1").unwrap(),
             ));
 
             // part2
@@ -393,7 +393,7 @@ pub trait Fp254Impl {
             let s2 = s.clone();
             let k2 = circuit.extend(U254::add_constant_without_carry(
                 k.clone(),
-                BigUint::from_str("1").unwrap(),
+                &BigUint::from_str("1").unwrap(),
             ));
 
             // part3
@@ -403,7 +403,7 @@ pub trait Fp254Impl {
             let s3 = circuit.extend(U254::double_without_overflow(s.clone()));
             let k3 = circuit.extend(U254::add_constant_without_carry(
                 k.clone(),
-                BigUint::from_str("1").unwrap(),
+                &BigUint::from_str("1").unwrap(),
             ));
 
             // part4
@@ -413,7 +413,7 @@ pub trait Fp254Impl {
             let s4 = circuit.extend(U254::add_without_carry(r.clone(), s.clone()));
             let k4 = circuit.extend(U254::add_constant_without_carry(
                 k.clone(),
-                BigUint::from_str("1").unwrap(),
+                &BigUint::from_str("1").unwrap(),
             ));
 
             // calculate new u
@@ -470,7 +470,7 @@ pub trait Fp254Impl {
 
             let v_equals_one = circuit.extend(U254::equal_constant(
                 v.clone(),
-                BigUint::from_str("1").unwrap(),
+                &BigUint::from_str("1").unwrap(),
             ))[0]
                 .clone();
             u = circuit.extend(U254::select(u, new_u, v_equals_one.clone()));
@@ -563,7 +563,7 @@ pub trait Fp254Impl {
         // residue for r2
         let result_plus_one_third = circuit.extend(U254::add_constant_without_carry(
             result.clone(),
-            Self::one_third_modulus(),
+            &Self::one_third_modulus(),
         ));
         result = circuit.extend(U254::select(
             result_plus_one_third,
@@ -573,7 +573,7 @@ pub trait Fp254Impl {
         // residue for r1
         let result_plus_two_third = circuit.extend(U254::add_constant_without_carry(
             result.clone(),
-            Self::two_third_modulus(),
+            &Self::two_third_modulus(),
         ));
         result = circuit.extend(U254::select(
             result_plus_two_third,

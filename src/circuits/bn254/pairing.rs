@@ -1085,7 +1085,7 @@ pub fn multi_miller_loop(
     let mut u = Vec::new();
     for i in 0..qells[0].len() {
         let mut x = Vec::new();
-        for qell in qells.clone() {
+        for qell in qells.iter() {
             x.push(qell[i]);
         }
         u.push(x);
@@ -1135,7 +1135,7 @@ pub fn multi_miller_loop_evaluate_fast(ps: Vec<Wires>, qs: Vec<Wires>) -> (Wires
     let mut u = Vec::new();
     for i in 0..qells[0].len() {
         let mut x = Vec::new();
-        for qell in qells.clone() {
+        for qell in qells.iter() {
             x.push(qell[i].clone());
         }
         u.push(x);
@@ -1245,7 +1245,7 @@ pub fn multi_miller_loop_evaluate_montgomery_fast(
     let mut u = Vec::new();
     for i in 0..qells[0].len() {
         let mut x = Vec::new();
-        for qell in qells.clone() {
+        for qell in qells.iter() {
             x.push(qell[i].clone());
         }
         u.push(x);

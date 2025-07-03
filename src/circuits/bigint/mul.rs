@@ -157,7 +157,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
     pub fn mul_by_constant(a_wires: Wires, c: BigUint) -> Circuit {
         assert_eq!(a_wires.len(), N_BITS);
-        let mut c_bits = bits_from_biguint(c);
+        let mut c_bits = bits_from_biguint(&c);
         c_bits.truncate(N_BITS);
 
         let mut circuit = Circuit::empty();
@@ -208,7 +208,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn mul_by_constant_modulo_power_two(a_wires: Wires, c: BigUint, power: usize) -> Circuit {
         assert_eq!(a_wires.len(), N_BITS);
         assert!(power < 2 * N_BITS);
-        let mut c_bits = bits_from_biguint(c);
+        let mut c_bits = bits_from_biguint(&c);
         c_bits.truncate(N_BITS);
 
         let mut circuit = Circuit::empty();
@@ -265,10 +265,10 @@ mod tests {
             let a = random_biguint_n_bits(254);
             let b = random_biguint_n_bits(254);
             let circuit = U254::mul(
-                U254::wires_set_from_number(a.clone()),
-                U254::wires_set_from_number(b.clone()),
+                U254::wires_set_from_number(&a),
+                U254::wires_set_from_number(&b),
             );
-            let c = a * b;
+            let c = &a * &b;
             circuit.gate_counts().print();
 
             for mut gate in circuit.1 {
@@ -292,10 +292,10 @@ mod tests {
             let a = random_biguint_n_bits(254);
             let b = random_biguint_n_bits(254);
             let circuit = U254::mul_karatsuba(
-                U254::wires_set_from_number(a.clone()),
-                U254::wires_set_from_number(b.clone()),
+                U254::wires_set_from_number(&a),
+                U254::wires_set_from_number(&b),
             );
-            let c = a * b;
+            let c = &a * &b;
             circuit.gate_counts().print();
 
             for mut gate in circuit.1 {
@@ -322,10 +322,10 @@ mod tests {
             pub type T = BigIntImpl<S>;
 
             let circuit = T::mul_karatsuba(
-                T::wires_set_from_number(a.clone()),
-                T::wires_set_from_number(b.clone()),
+                T::wires_set_from_number(&a),
+                T::wires_set_from_number(&b),
             );
-            let c = a * b;
+            let c = &a * &b;
             circuit.gate_counts().print();
 
             for mut gate in circuit.1 {
@@ -348,8 +348,8 @@ mod tests {
         for _ in 0..10 {
             let a = random_biguint_n_bits(254);
             let b = random_biguint_n_bits(254);
-            let circuit = U254::mul_by_constant(U254::wires_set_from_number(a.clone()), b.clone());
-            let c = a * b;
+            let circuit = U254::mul_by_constant(U254::wires_set_from_number(&a), b.clone());
+            let c = &a * &b;
             circuit.gate_counts().print();
 
             for mut gate in circuit.1 {
@@ -374,11 +374,11 @@ mod tests {
             let a = random_biguint_n_bits(254);
             let b = random_biguint_n_bits(254);
             let circuit = U254::mul_by_constant_modulo_power_two(
-                U254::wires_set_from_number(a.clone()),
+                U254::wires_set_from_number(&a),
                 b.clone(),
                 power,
             );
-            let c = a * b % BigUint::from_str("2").unwrap().pow(power as u32);
+            let c = &a * &b % BigUint::from_str("2").unwrap().pow(power as u32);
             circuit.gate_counts().print();
 
             for mut gate in circuit.1 {

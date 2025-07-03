@@ -16,7 +16,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
     pub fn wires() -> Wires {
         n_wires(N_BITS)
     }
-    pub fn wires_set_from_number(u: BigUint) -> Wires {
+    pub fn wires_set_from_number(u: &BigUint) -> Wires {
         bits_from_biguint(u)[0..N_BITS]
             .iter()
             .map(|bit| {
