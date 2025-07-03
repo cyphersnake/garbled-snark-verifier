@@ -45,7 +45,7 @@ pub fn biguint_from_bits(bits: Vec<bool>) -> BigUint {
 }
 
 pub fn n_wires(n: usize) -> Wires {
-    (0..n).map(|_| new_wirex()).collect()
+    (0..n).map(|_| Wire::new_rc()).collect()
 }
 
 pub fn biguint_from_wires(wires: Wires) -> BigUint {

@@ -61,15 +61,14 @@ impl G2Projective {
     }
 
     pub fn wires() -> Wires {
-        (0..Self::N_BITS).map(|_| new_wirex()).collect()
+        (0..Self::N_BITS).map(|_| Wire::new_rc()).collect()
     }
 
     pub fn wires_set(u: ark_bn254::G2Projective) -> Wires {
         Self::to_bits(u)[0..Self::N_BITS]
             .iter()
             .map(|bit| {
-                let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                let wire = Wire::new_rc_with(*bit);
                 wire
             })
             .collect()
@@ -144,11 +143,7 @@ impl G2Affine {
     pub fn wires_set(u: ark_bn254::G2Affine) -> Wires {
         Self::to_bits(u)[0..Self::N_BITS]
             .iter()
-            .map(|bit| {
-                let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
-                wire
-            })
+            .map(|bit| Wire::new_rc_with(*bit))
             .collect()
     }
 

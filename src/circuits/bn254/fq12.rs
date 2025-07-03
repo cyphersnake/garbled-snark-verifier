@@ -40,15 +40,14 @@ impl Fq12 {
     }
 
     pub fn wires() -> Wires {
-        (0..Self::N_BITS).map(|_| new_wirex()).collect()
+        (0..Self::N_BITS).map(|_| Wire::new_rc()).collect()
     }
 
     pub fn wires_set(u: ark_bn254::Fq12) -> Wires {
         Self::to_bits(u)[0..Self::N_BITS]
             .iter()
             .map(|bit| {
-                let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                let wire = Wire::new_rc_with(*bit);
                 wire
             })
             .collect()
@@ -96,7 +95,7 @@ impl Fq12 {
         let mut wire = results[0].clone();
 
         for next in results[1..].iter().cloned() {
-            let new_wire = new_wirex();
+            let new_wire = Wire::new_rc();
             circuit.add(Gate::and(wire, next, new_wire.clone()));
             wire = new_wire;
         }

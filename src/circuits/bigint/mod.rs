@@ -20,8 +20,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
         bits_from_biguint(u)[0..N_BITS]
             .iter()
             .map(|bit| {
-                let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                let wire = Wire::new_rc_with(*bit);
                 wire
             })
             .collect()

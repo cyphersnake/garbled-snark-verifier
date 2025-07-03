@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::core::s::S;
 use crate::core::utils::{LIMB_LEN, N_LIMBS, convert_between_blake3_and_normal_form};
 use bitvm::{bigint::U256, hash::blake3::blake3_compute_script_with_limb, treepp::*};
@@ -11,6 +14,9 @@ pub struct Wire {
     pub value: Option<bool>,
     pub label: Option<S>,
 }
+
+pub type Wirex = Rc<RefCell<Wire>>;
+pub type Wires = Vec<Wirex>;
 
 impl Default for Wire {
     fn default() -> Self {
@@ -32,6 +38,16 @@ impl Wire {
             value: None,
             label: None,
         }
+    }
+
+    pub fn new_rc() -> Wirex {
+        Rc::new(RefCell::new(Self::new()))
+    }
+
+    pub fn new_rc_with(bit: bool) -> Wirex {
+        let mut _self = Self::new();
+        _self.set(bit);
+        Rc::new(RefCell::new(_self))
     }
 
     pub fn select(&self, selector: bool) -> S {

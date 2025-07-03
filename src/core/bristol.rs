@@ -11,7 +11,7 @@ pub fn parser(filename: &str) -> (Circuit, Vec<Wires>, Vec<Wires>) {
     let now: usize = words.next().unwrap().parse().unwrap();
     let mut wires = Vec::new();
     for _ in 0..now {
-        wires.push(new_wirex());
+        wires.push(Wire::new_rc());
     }
 
     let mut input_sizes = Vec::<usize>::new();

@@ -555,9 +555,9 @@ mod tests {
 
     #[test]
     fn test_gate() {
-        let wire_1 = new_wirex();
-        let wire_2 = new_wirex();
-        let wire_3 = new_wirex();
+        let wire_1 = Wire::new_rc();
+        let wire_2 = Wire::new_rc();
+        let wire_3 = Wire::new_rc();
         let gate = Gate::and(wire_1, wire_2, wire_3);
 
         let correct_garbled = gate.garbled();

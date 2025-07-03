@@ -16,8 +16,7 @@ static KARATSUBA_DECISIONS: Lazy<Mutex<[Option<bool>; 256]>> =
     Lazy::new(|| Mutex::new([None; 256]));
 
 fn extend_with_false(wires: &mut Wires) {
-    let zero_wire = new_wirex();
-    zero_wire.borrow_mut().set(false);
+    let zero_wire = Wire::new_rc_with(false);
     wires.push(zero_wire);
 }
 
@@ -37,10 +36,9 @@ pub fn mul_generic(a_wires: &Wires, b_wires: &Wires, len: usize) -> Circuit {
 
     let mut circuit = Circuit::empty();
     for _ in 0..(len * 2) {
-        let wire = new_wirex();
-        wire.borrow_mut().set(false);
+        let wire = Wire::new_rc_with(false);
         circuit.add_wire(wire)
-    } //this part can be optimized later 
+    } //this part can be optimized later
 
     for (i, current_bit) in b_wires.iter().enumerate().take(len) {
         let mut addition_wires_0 = vec![];
@@ -163,10 +161,9 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
         let mut circuit = Circuit::empty();
 
         for _ in 0..(N_BITS * 2) {
-            let wire = new_wirex();
-            wire.borrow_mut().set(false);
+            let wire = Wire::new_rc_with(false);
             circuit.add_wire(wire)
-        } //this part can be optimized later 
+        } //this part can be optimized later
 
         for (i, bit) in c_bits.iter().enumerate() {
             if *bit {
@@ -214,10 +211,9 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
         let mut circuit = Circuit::empty();
 
         for _ in 0..power {
-            let wire = new_wirex();
-            wire.borrow_mut().set(false);
+            let wire = Wire::new_rc_with(false);
             circuit.add_wire(wire)
-        } //this part can be optimized later 
+        } //this part can be optimized later
 
         for (i, bit) in c_bits.iter().enumerate() {
             if i == power {
@@ -321,10 +317,8 @@ mod tests {
             let b = random_biguint_n_bits(S);
             pub type T = BigIntImpl<S>;
 
-            let circuit = T::mul_karatsuba(
-                T::wires_set_from_number(&a),
-                T::wires_set_from_number(&b),
-            );
+            let circuit =
+                T::mul_karatsuba(T::wires_set_from_number(&a), T::wires_set_from_number(&b));
             let c = &a * &b;
             circuit.gate_counts().print();
 
