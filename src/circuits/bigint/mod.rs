@@ -1,3 +1,4 @@
+use crate::core::wire::WireOps;
 use crate::{
     bag::*,
     circuits::bigint::utils::{bits_from_biguint, n_wires},
@@ -21,7 +22,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
             .iter()
             .map(|bit| {
                 let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                wire.set(*bit);
                 wire
             })
             .collect()

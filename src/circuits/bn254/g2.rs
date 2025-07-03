@@ -1,3 +1,4 @@
+use crate::core::wire::WireOps;
 use crate::{bag::*, circuits::bn254::fq2::Fq2};
 use ark_ff::UniformRand;
 use ark_std::rand::SeedableRng;
@@ -69,7 +70,7 @@ impl G2Projective {
             .iter()
             .map(|bit| {
                 let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                wire.set(*bit);
                 wire
             })
             .collect()
@@ -80,11 +81,11 @@ impl G2Projective {
     }
 
     pub fn from_wires(wires: Wires) -> ark_bn254::G2Projective {
-        Self::from_bits(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_wires_unchecked(wires: Wires) -> ark_bn254::G2Projective {
-        Self::from_bits_unchecked(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits_unchecked(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_montgomery_wires_unchecked(wires: Wires) -> ark_bn254::G2Projective {
@@ -146,7 +147,7 @@ impl G2Affine {
             .iter()
             .map(|bit| {
                 let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                wire.set(*bit);
                 wire
             })
             .collect()
@@ -157,11 +158,11 @@ impl G2Affine {
     }
 
     pub fn from_wires(wires: Wires) -> ark_bn254::G2Affine {
-        Self::from_bits(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_wires_unchecked(wires: Wires) -> ark_bn254::G2Affine {
-        Self::from_bits_unchecked(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits_unchecked(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_montgomery_wires_unchecked(wires: Wires) -> ark_bn254::G2Affine {
@@ -172,6 +173,7 @@ impl G2Affine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::wire::WireOps;
 
     #[test]
     fn test_g2p_random() {

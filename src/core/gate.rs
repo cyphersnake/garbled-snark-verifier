@@ -1,23 +1,19 @@
 use crate::bag::*;
 use crate::core::utils::{LIMB_LEN, N_LIMBS, bit_to_usize, convert_between_blake3_and_normal_form};
+use crate::core::wire::with_arena;
 use bitvm::{bigint::U256, hash::blake3::blake3_compute_script_with_limb, treepp::*};
 use std::ops::{Add, AddAssign};
 
 #[derive(Clone)]
 pub struct Gate {
-    pub wire_a: Rc<RefCell<Wire>>,
-    pub wire_b: Rc<RefCell<Wire>>,
-    pub wire_c: Rc<RefCell<Wire>>,
+    pub wire_a: WireId,
+    pub wire_b: WireId,
+    pub wire_c: WireId,
     pub name: String,
 }
 
 impl Gate {
-    pub fn new(
-        wire_a: Rc<RefCell<Wire>>,
-        wire_b: Rc<RefCell<Wire>>,
-        wire_c: Rc<RefCell<Wire>>,
-        name: String,
-    ) -> Self {
+    pub fn new(wire_a: WireId, wire_b: WireId, wire_c: WireId, name: String) -> Self {
         Self {
             wire_a,
             wire_b,
@@ -26,64 +22,36 @@ impl Gate {
         }
     }
 
-    pub fn and(
-        wire_a: Rc<RefCell<Wire>>,
-        wire_b: Rc<RefCell<Wire>>,
-        wire_c: Rc<RefCell<Wire>>,
-    ) -> Self {
+    pub fn and(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, "and".to_string())
     }
 
-    pub fn nand(
-        wire_a: Rc<RefCell<Wire>>,
-        wire_b: Rc<RefCell<Wire>>,
-        wire_c: Rc<RefCell<Wire>>,
-    ) -> Self {
+    pub fn nand(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, "nand".to_string())
     }
 
-    pub fn or(
-        wire_a: Rc<RefCell<Wire>>,
-        wire_b: Rc<RefCell<Wire>>,
-        wire_c: Rc<RefCell<Wire>>,
-    ) -> Self {
+    pub fn or(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, "or".to_string())
     }
 
-    pub fn xor(
-        wire_a: Rc<RefCell<Wire>>,
-        wire_b: Rc<RefCell<Wire>>,
-        wire_c: Rc<RefCell<Wire>>,
-    ) -> Self {
+    pub fn xor(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, "xor".to_string())
     }
 
-    pub fn xnor(
-        wire_a: Rc<RefCell<Wire>>,
-        wire_b: Rc<RefCell<Wire>>,
-        wire_c: Rc<RefCell<Wire>>,
-    ) -> Self {
+    pub fn xnor(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
         Self::new(wire_a, wire_b, wire_c, "xnor".to_string())
     }
 
-    pub fn not(wire_a: Rc<RefCell<Wire>>, wire_c: Rc<RefCell<Wire>>) -> Self {
-        Self::new(wire_a.clone(), wire_a.clone(), wire_c, "not".to_string())
+    pub fn not(wire_a: WireId, wire_c: WireId) -> Self {
+        Self::new(wire_a, wire_a, wire_c, "not".to_string())
     }
 
-    pub fn nimp(
-        wire_a: Rc<RefCell<Wire>>,
-        wire_b: Rc<RefCell<Wire>>,
-        wire_c: Rc<RefCell<Wire>>,
-    ) -> Self {
-        Self::new(wire_a.clone(), wire_b.clone(), wire_c, "nimp".to_string())
+    pub fn nimp(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
+        Self::new(wire_a, wire_b, wire_c, "nimp".to_string())
     }
 
-    pub fn nsor(
-        wire_a: Rc<RefCell<Wire>>,
-        wire_b: Rc<RefCell<Wire>>,
-        wire_c: Rc<RefCell<Wire>>,
-    ) -> Self {
-        Self::new(wire_a.clone(), wire_b.clone(), wire_c, "nsor".to_string())
+    pub fn nsor(wire_a: WireId, wire_b: WireId, wire_c: WireId) -> Self {
+        Self::new(wire_a, wire_b, wire_c, "nsor".to_string())
     }
 
     pub fn f(&self) -> fn(bool, bool) -> bool {
@@ -157,10 +125,11 @@ impl Gate {
     }
 
     pub fn evaluate(&mut self) {
-        self.wire_c.borrow_mut().set((self.f())(
-            self.wire_a.borrow().get_value(),
-            self.wire_b.borrow().get_value(),
-        ));
+        with_arena(|wires| {
+            let a = wires[self.wire_a].get_value();
+            let b = wires[self.wire_b].get_value();
+            wires[self.wire_c].set((self.f())(a, b));
+        });
     }
 
     pub fn garbled(&self) -> Vec<S> {
@@ -168,23 +137,31 @@ impl Gate {
             .iter()
             .map(|(i, j)| {
                 let k = (self.f())(*i, *j);
-                let a = self.wire_a.borrow().select(*i);
-                let b = self.wire_b.borrow().select(*j);
-                let c = self.wire_c.borrow().select(k);
+                let (a, b, c) = with_arena(|wires| {
+                    let a = wires[self.wire_a].select(*i);
+                    let b = wires[self.wire_b].select(*j);
+                    let c = wires[self.wire_c].select(k);
+                    (a, b, c)
+                });
                 S::hash_together(a, b) + c.neg()
             })
             .collect()
     }
 
     pub fn check_garble(&self, garble: Vec<S>, bit: bool) -> (bool, S) {
-        let a = self.wire_a.borrow().get_label();
-        let b = self.wire_b.borrow().get_label();
-        let index = bit_to_usize(self.wire_a.borrow().get_value())
-            + 2 * bit_to_usize(self.wire_b.borrow().get_value());
+        let (a, b, bit_a, bit_b, hash_c) = with_arena(|wires| {
+            let a = wires[self.wire_a].get_label();
+            let b = wires[self.wire_b].get_label();
+            let bit_a = wires[self.wire_a].get_value();
+            let bit_b = wires[self.wire_b].get_value();
+            let hash_c = wires[self.wire_c].select_hash(bit);
+            (a, b, bit_a, bit_b, hash_c)
+        });
+        let index = bit_to_usize(bit_a) + 2 * bit_to_usize(bit_b);
         let row = garble[index];
         let c = S::hash_together(a, b) + row.neg();
         let hc = c.hash();
-        (hc == self.wire_c.borrow().select_hash(bit), c)
+        (hc == hash_c, c)
     }
 
     pub fn script(&self, garbled: Vec<S>, correct: bool) -> Script {
@@ -196,9 +173,9 @@ impl Gate {
             for _ in 0..N_LIMBS { {2 * N_LIMBS} OP_PICK }             // a bit_a b bit_b a b | bit_a bit_b
             { U256::toaltstack() } { U256::toaltstack() }             // a bit_a b bit_b | a b bit_a bit_b
             OP_TOALTSTACK { U256::toaltstack() }                      // a bit_a | b bit_b a b bit_a bit_b
-            { self.wire_a.borrow().commitment_script() } OP_VERIFY    // | b bit_b a b bit_a bit_b
+            { with_arena(|wires| wires[self.wire_a].commitment_script()) } OP_VERIFY    // | b bit_b a b bit_a bit_b
             { U256::fromaltstack() } OP_FROMALTSTACK                  // b bit_b | a b bit_a bit_b
-            { self.wire_b.borrow().commitment_script() } OP_VERIFY    // | a b bit_a bit_b
+            { with_arena(|wires| wires[self.wire_b].commitment_script()) } OP_VERIFY    // | a b bit_a bit_b
             { U256::fromaltstack() }                                  // a | b bit_a bit_b
             { convert_between_blake3_and_normal_form() }              // a' | b bit_a bit_b
             { U256::fromaltstack() }                                  // a' b | bit_a bit_b
@@ -245,7 +222,7 @@ impl Gate {
             { U256::sub(1, 0) }                                    // c=hab-tau | bit_a bit_b
             OP_FROMALTSTACK OP_FROMALTSTACK                        // c bit_a bit_b
             { self.evaluation_script() }                           // c bit_c
-            { self.wire_c.borrow().commitment_script() }
+            { with_arena(|wires| wires[self.wire_c].commitment_script()) }
             if correct {
                 OP_VERIFY
             }
@@ -592,8 +569,11 @@ mod tests {
                 if correct { "correct" } else { "incorrect" }
             );
             for (bit_a, bit_b) in [(false, false), (true, false), (false, true), (true, true)] {
-                let a = gate.wire_a.borrow().select(bit_a);
-                let b = gate.wire_b.borrow().select(bit_b);
+                let (a, b) = with_arena(|wires| {
+                    let a = wires[gate.wire_a].select(bit_a);
+                    let b = wires[gate.wire_b].select(bit_b);
+                    (a, b)
+                });
                 let gate_script = gate.script(garbled.clone(), correct);
                 let script = script! {
                     { U256::push_hex(&hex::encode(a.0)) }

@@ -1,4 +1,5 @@
 use super::BigIntImpl;
+use crate::core::wire::WireOps;
 use crate::{
     bag::*,
     circuits::bigint::{
@@ -17,7 +18,7 @@ static KARATSUBA_DECISIONS: Lazy<Mutex<[Option<bool>; 256]>> =
 
 fn extend_with_false(wires: &mut Wires) {
     let zero_wire = new_wirex();
-    zero_wire.borrow_mut().set(false);
+    zero_wire.set(false);
     wires.push(zero_wire);
 }
 
@@ -38,7 +39,7 @@ pub fn mul_generic(a_wires: &Wires, b_wires: &Wires, len: usize) -> Circuit {
     let mut circuit = Circuit::empty();
     for _ in 0..(len * 2) {
         let wire = new_wirex();
-        wire.borrow_mut().set(false);
+        wire.set(false);
         circuit.add_wire(wire)
     } //this part can be optimized later 
 
@@ -76,7 +77,7 @@ pub fn mul_karatsuba_generic(a_wires: &Wires, b_wires: &Wires, len: usize) -> Ci
         let mut circuit = Circuit::empty();
         circuit.0 = n_wires(len * 2);
         for i in 0..len * 2 {
-            circuit.0[i].borrow_mut().set(false);
+            circuit.0[i].set(false);
         }
 
         let len_0 = len / 2;
@@ -164,7 +165,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
         for _ in 0..(N_BITS * 2) {
             let wire = new_wirex();
-            wire.borrow_mut().set(false);
+            wire.set(false);
             circuit.add_wire(wire)
         } //this part can be optimized later 
 
@@ -215,7 +216,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
         for _ in 0..power {
             let wire = new_wirex();
-            wire.borrow_mut().set(false);
+            wire.set(false);
             circuit.add_wire(wire)
         } //this part can be optimized later 
 
@@ -248,6 +249,7 @@ impl<const N_BITS: usize> BigIntImpl<N_BITS> {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::wire::WireOps;
     use std::str::FromStr;
 
     use num_bigint::BigUint;
@@ -279,7 +281,7 @@ mod tests {
                 circuit
                     .0
                     .iter()
-                    .map(|output_wire| output_wire.borrow().get_value())
+                    .map(|output_wire| output_wire.get_value())
                     .collect(),
             );
             assert_eq!(result, c);
@@ -306,7 +308,7 @@ mod tests {
                 circuit
                     .0
                     .iter()
-                    .map(|output_wire| output_wire.borrow().get_value())
+                    .map(|output_wire| output_wire.get_value())
                     .collect(),
             );
             assert_eq!(result, c);
@@ -336,7 +338,7 @@ mod tests {
                 circuit
                     .0
                     .iter()
-                    .map(|output_wire| output_wire.borrow().get_value())
+                    .map(|output_wire| output_wire.get_value())
                     .collect(),
             );
             assert_eq!(result, c);
@@ -360,7 +362,7 @@ mod tests {
                 circuit
                     .0
                     .iter()
-                    .map(|output_wire| output_wire.borrow().get_value())
+                    .map(|output_wire| output_wire.get_value())
                     .collect(),
             );
             assert_eq!(result, c);
@@ -389,7 +391,7 @@ mod tests {
                 circuit
                     .0
                     .iter()
-                    .map(|output_wire| output_wire.borrow().get_value())
+                    .map(|output_wire| output_wire.get_value())
                     .collect(),
             );
             assert_eq!(result, c);

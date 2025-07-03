@@ -1,4 +1,5 @@
 use super::BigIntImpl;
+use crate::core::wire::with_arena;
 use crate::{
     bag::*,
     circuits::{
@@ -35,7 +36,7 @@ pub fn optimized_sub_generic(
 
     let mut circuit = Circuit::empty();
 
-    let mut want: Rc<RefCell<Wire>> = new_wirex();
+    let mut want: Wirex = new_wirex();
     for i in 0..len {
         circuit.add_wire(new_wirex());
         if i > 0 {
@@ -75,7 +76,7 @@ pub fn optimized_sub_generic(
                 a_wires[i].clone(),
                 circuit.0[i].clone(),
             ));
-            let new_want: Rc<RefCell<Wire>> = new_wirex();
+            let new_want: Wirex = new_wirex();
             circuit.add(Gate::nimp(
                 b_wires[i].clone(),
                 a_wires[i].clone(),
@@ -308,6 +309,7 @@ mod tests {
             biguint_from_bits, biguint_from_wires, biguint_two_pow_254, random_biguint_n_bits,
         },
     };
+    use crate::core::wire::{WireOps, with_arena};
     use num_bigint::BigUint;
     use std::str::FromStr;
 
@@ -461,13 +463,13 @@ mod tests {
                 gate.evaluate();
             }
             if a < b {
-                assert!(!bound_check.borrow().get_value());
+                assert!(!with_arena(|wires| wires[bound_check].get_value()));
             } else {
-                assert!(bound_check.borrow().get_value());
+                assert!(with_arena(|wires| wires[bound_check].get_value()));
                 let result = biguint_from_bits(
                     output_wires
                         .iter()
-                        .map(|output_wire| output_wire.borrow().get_value())
+                        .map(|output_wire| with_arena(|wires| wires[*output_wire].get_value()))
                         .collect(),
                 );
                 assert_eq!(result, a - b);

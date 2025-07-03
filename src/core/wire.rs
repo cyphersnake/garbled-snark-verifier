@@ -1,6 +1,68 @@
 use crate::core::s::S;
 use crate::core::utils::{LIMB_LEN, N_LIMBS, convert_between_blake3_and_normal_form};
 use bitvm::{bigint::U256, hash::blake3::blake3_compute_script_with_limb, treepp::*};
+use once_cell::sync::Lazy;
+use std::sync::Mutex;
+
+pub type WireId = usize;
+pub type Wires = Vec<WireId>;
+
+pub static ARENA: Lazy<Mutex<Vec<Wire>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+pub fn new_wirex() -> WireId {
+    let mut arena = ARENA.lock().unwrap();
+    let id = arena.len();
+    arena.push(Wire::new());
+    id
+}
+
+pub(crate) fn with_arena<F, R>(mut f: F) -> R
+where
+    F: FnMut(&mut Vec<Wire>) -> R,
+{
+    let mut arena = ARENA.lock().unwrap();
+    f(&mut arena)
+}
+
+pub trait WireOps {
+    fn set(self, bit: bool);
+    fn set2(self, bit: bool, label: S);
+    fn get_value(self) -> bool;
+    fn get_label(self) -> S;
+    fn select(self, selector: bool) -> S;
+    fn select_hash(self, selector: bool) -> S;
+    fn commitment_script(self) -> Script;
+}
+
+impl WireOps for WireId {
+    fn set(self, bit: bool) {
+        with_arena(|wires| wires[self].set(bit));
+    }
+
+    fn set2(self, bit: bool, label: S) {
+        with_arena(|wires| wires[self].set2(bit, label));
+    }
+
+    fn get_value(self) -> bool {
+        with_arena(|wires| wires[self].get_value())
+    }
+
+    fn get_label(self) -> S {
+        with_arena(|wires| wires[self].get_label())
+    }
+
+    fn select(self, selector: bool) -> S {
+        with_arena(|wires| wires[self].select(selector))
+    }
+
+    fn select_hash(self, selector: bool) -> S {
+        with_arena(|wires| wires[self].select_hash(selector))
+    }
+
+    fn commitment_script(self) -> Script {
+        with_arena(|wires| wires[self].commitment_script())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Wire {

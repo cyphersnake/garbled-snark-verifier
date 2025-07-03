@@ -1,3 +1,4 @@
+use crate::core::wire::WireOps;
 use crate::{
     bag::*,
     circuits::{
@@ -527,8 +528,8 @@ pub trait Fp254Impl {
         let mut result = Fq::wires();
         let mut r1 = new_wirex();
         let mut r2 = new_wirex();
-        r1.borrow_mut().set(false);
-        r2.borrow_mut().set(false);
+        r1.set(false);
+        r2.set(false);
         for i in 0..U254::N_BITS {
             // msb to lsb
             let j = U254::N_BITS - 1 - i;

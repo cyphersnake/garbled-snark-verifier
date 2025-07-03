@@ -1,4 +1,5 @@
 use crate::bag::*;
+use crate::core::wire::WireOps;
 
 pub fn half_adder(a: Wirex, b: Wirex) -> Circuit {
     let result = new_wirex();
@@ -100,6 +101,7 @@ pub fn multiplexer(a: Wires, s: Wires, w: usize) -> Circuit {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::wire::WireOps;
     use rand::{Rng, rng};
 
     use crate::{
@@ -120,10 +122,10 @@ mod tests {
 
         for ((a, b), (c, d)) in result {
             let a_wire = new_wirex();
-            a_wire.borrow_mut().set(a);
+            a_wire.set(a);
 
             let b_wire = new_wirex();
-            b_wire.borrow_mut().set(b);
+            b_wire.set(b);
 
             let circuit = half_adder(a_wire, b_wire);
 
@@ -133,8 +135,8 @@ mod tests {
 
             let (c_wire, d_wire) = (circuit.0[0].clone(), circuit.0[1].clone());
 
-            assert_eq!(c_wire.borrow().get_value(), c);
-            assert_eq!(d_wire.borrow().get_value(), d);
+            assert_eq!(c_wire.get_value(), c);
+            assert_eq!(d_wire.get_value(), d);
         }
     }
 
@@ -153,13 +155,13 @@ mod tests {
 
         for ((a, b, c), (d, e)) in result {
             let a_wire = new_wirex();
-            a_wire.borrow_mut().set(a);
+            a_wire.set(a);
 
             let b_wire = new_wirex();
-            b_wire.borrow_mut().set(b);
+            b_wire.set(b);
 
             let c_wire = new_wirex();
-            c_wire.borrow_mut().set(c);
+            c_wire.set(c);
 
             let circuit = full_adder(a_wire, b_wire, c_wire);
 
@@ -169,8 +171,8 @@ mod tests {
 
             let (d_wire, e_wire) = (circuit.0[0].clone(), circuit.0[1].clone());
 
-            assert_eq!(d_wire.borrow().get_value(), d);
-            assert_eq!(e_wire.borrow().get_value(), e);
+            assert_eq!(d_wire.get_value(), d);
+            assert_eq!(e_wire.get_value(), e);
         }
     }
 
@@ -185,10 +187,10 @@ mod tests {
 
         for ((a, b), (c, d)) in result {
             let a_wire = new_wirex();
-            a_wire.borrow_mut().set(a);
+            a_wire.set(a);
 
             let b_wire = new_wirex();
-            b_wire.borrow_mut().set(b);
+            b_wire.set(b);
 
             let circuit = half_subtracter(a_wire, b_wire);
 
@@ -198,8 +200,8 @@ mod tests {
 
             let (c_wire, d_wire) = (circuit.0[0].clone(), circuit.0[1].clone());
 
-            assert_eq!(c_wire.borrow().get_value(), c);
-            assert_eq!(d_wire.borrow().get_value(), d);
+            assert_eq!(c_wire.get_value(), c);
+            assert_eq!(d_wire.get_value(), d);
         }
     }
 
@@ -218,13 +220,13 @@ mod tests {
 
         for ((a, b, c), (d, e)) in result {
             let a_wire = new_wirex();
-            a_wire.borrow_mut().set(a);
+            a_wire.set(a);
 
             let b_wire = new_wirex();
-            b_wire.borrow_mut().set(b);
+            b_wire.set(b);
 
             let c_wire = new_wirex();
-            c_wire.borrow_mut().set(c);
+            c_wire.set(c);
 
             let circuit = full_subtracter(a_wire, b_wire, c_wire);
 
@@ -234,8 +236,8 @@ mod tests {
 
             let (d_wire, e_wire) = (circuit.0[0].clone(), circuit.0[1].clone());
 
-            assert_eq!(d_wire.borrow().get_value(), d);
-            assert_eq!(e_wire.borrow().get_value(), e);
+            assert_eq!(d_wire.get_value(), d);
+            assert_eq!(e_wire.get_value(), e);
         }
     }
 
@@ -254,13 +256,13 @@ mod tests {
 
         for ((a, b, c), d) in result {
             let a_wire = new_wirex();
-            a_wire.borrow_mut().set(a);
+            a_wire.set(a);
 
             let b_wire = new_wirex();
-            b_wire.borrow_mut().set(b);
+            b_wire.set(b);
 
             let c_wire = new_wirex();
-            c_wire.borrow_mut().set(c);
+            c_wire.set(c);
 
             let circuit = selector(a_wire, b_wire, c_wire);
 
@@ -270,7 +272,7 @@ mod tests {
 
             let d_wire = circuit.0[0].clone();
 
-            assert_eq!(d_wire.borrow().get_value(), d);
+            assert_eq!(d_wire.get_value(), d);
         }
     }
 
@@ -282,14 +284,14 @@ mod tests {
         let s: Wires = (0..w).map(|_| new_wirex()).collect();
 
         for wire in a.clone() {
-            wire.borrow_mut().set(rng().random());
+            wire.set(rng().random());
         }
 
         let mut u = 0;
         for wire in s.iter().rev() {
             let x = rng().random();
             u = u + u + if x { 1 } else { 0 };
-            wire.borrow_mut().set(x);
+            wire.set(x);
         }
 
         let circuit = multiplexer(a.clone(), s.clone(), w);
@@ -299,8 +301,8 @@ mod tests {
             gate.evaluate();
         }
 
-        let result = circuit.0[0].clone().borrow().get_value();
-        let expected = a[u].clone().borrow().get_value();
+        let result = circuit.0[0].get_value();
+        let expected = a[u].get_value();
 
         assert_eq!(result, expected);
     }

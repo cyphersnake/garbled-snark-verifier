@@ -10,6 +10,7 @@ use crate::circuits::bn254::g1::{
 use crate::circuits::bn254::pairing::{
     multi_miller_loop_groth16_evaluate_fast, multi_miller_loop_groth16_evaluate_montgomery_fast,
 };
+use crate::core::wire::WireOps;
 use ark_ec::pairing::Pairing;
 use ark_ec::{AffineRepr, VariableBaseMSM};
 use ark_ff::Field;
@@ -234,7 +235,7 @@ mod tests {
 
         let (result, gate_count) = groth16_verifier_evaluate(public, proof_a, proof_b, proof_c, vk);
         gate_count.print();
-        assert!(result.borrow().get_value());
+        assert!(result.get_value());
     }
 
     #[test]
@@ -264,6 +265,6 @@ mod tests {
         let (result, gate_count) =
             groth16_verifier_evaluate_montgomery(public, proof_a, proof_b, proof_c, vk);
         gate_count.print();
-        assert!(result.borrow().get_value());
+        assert!(result.get_value());
     }
 }

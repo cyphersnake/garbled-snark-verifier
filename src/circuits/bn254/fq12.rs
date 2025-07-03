@@ -1,3 +1,4 @@
+use crate::core::wire::WireOps;
 use crate::{
     bag::*,
     circuits::bn254::{fp254impl::Fp254Impl, fq::Fq, fq2::Fq2, fq6::Fq6},
@@ -48,7 +49,7 @@ impl Fq12 {
             .iter()
             .map(|bit| {
                 let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                wire.set(*bit);
                 wire
             })
             .collect()
@@ -59,7 +60,7 @@ impl Fq12 {
     }
 
     pub fn from_wires(wires: Wires) -> ark_bn254::Fq12 {
-        Self::from_bits(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_montgomery_wires(wires: Wires) -> ark_bn254::Fq12 {
@@ -798,6 +799,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+    use crate::core::wire::WireOps;
     use ark_ff::{CyclotomicMultSubgroup, Field};
     use num_bigint::BigUint;
     use serial_test::serial;
@@ -821,7 +823,7 @@ mod tests {
         for mut gate in circuit.1 {
             gate.evaluate();
         }
-        let result = circuit.0[0].clone().borrow().get_value();
+        let result = circuit.0[0].get_value();
         assert_eq!(result, a == b);
 
         let circuit = Fq12::equal_constant(Fq12::wires_set(a), a);
@@ -829,7 +831,7 @@ mod tests {
         for mut gate in circuit.1 {
             gate.evaluate();
         }
-        let result = circuit.0[0].clone().borrow().get_value();
+        let result = circuit.0[0].get_value();
         assert!(result);
     }
 

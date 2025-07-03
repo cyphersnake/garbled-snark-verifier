@@ -1,3 +1,4 @@
+use crate::core::wire::WireOps;
 use crate::{bag::*, circuits::bn254::fq2::Fq2};
 use ark_ff::{Fp6Config, UniformRand, fields::AdditiveGroup};
 use ark_std::rand::SeedableRng;
@@ -58,7 +59,7 @@ impl Fq6 {
             .iter()
             .map(|bit| {
                 let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                wire.set(*bit);
                 wire
             })
             .collect()
@@ -69,7 +70,7 @@ impl Fq6 {
     }
 
     pub fn from_wires(wires: Wires) -> ark_bn254::Fq6 {
-        Self::from_bits(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_montgomery_wires(wires: Wires) -> ark_bn254::Fq6 {
@@ -900,6 +901,7 @@ impl Fq6 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::wire::WireOps;
     use ark_ff::{Field, Fp12Config};
     use serial_test::serial;
 

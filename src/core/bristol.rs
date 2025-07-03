@@ -1,4 +1,5 @@
 use crate::bag::*;
+use crate::core::wire::with_arena;
 use std::fs;
 
 pub fn parser(filename: &str) -> (Circuit, Vec<Wires>, Vec<Wires>) {
@@ -92,6 +93,7 @@ pub fn parser(filename: &str) -> (Circuit, Vec<Wires>, Vec<Wires>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::wire::{WireOps, with_arena};
     use rand::{Rng, rng};
 
     #[test]
@@ -100,17 +102,17 @@ mod tests {
         let a: u64 = rng().random();
         let b: u64 = rng().random();
         for (i, wire) in inputs[0].iter().enumerate() {
-            wire.borrow_mut().set((a >> i) & 1 == 1);
+            with_arena(|wires| wires[*wire].set((a >> i) & 1 == 1));
         }
         for (i, wire) in inputs[1].iter().enumerate() {
-            wire.borrow_mut().set((b >> i) & 1 == 1);
+            with_arena(|wires| wires[*wire].set((b >> i) & 1 == 1));
         }
         for mut gate in circuit.1 {
             gate.evaluate();
         }
         let mut result_bits = Vec::new();
         for wire in outputs[0].clone() {
-            result_bits.push(wire.borrow().get_value());
+            result_bits.push(with_arena(|wires| wires[wire].get_value()));
         }
         let mut c: u64 = 0;
         for bit in result_bits.iter().rev() {
@@ -125,17 +127,17 @@ mod tests {
         let a: u64 = rng().random();
         let b: u64 = rng().random();
         for (i, wire) in inputs[0].iter().enumerate() {
-            wire.borrow_mut().set((a >> i) & 1 == 1);
+            with_arena(|wires| wires[*wire].set((a >> i) & 1 == 1));
         }
         for (i, wire) in inputs[1].iter().enumerate() {
-            wire.borrow_mut().set((b >> i) & 1 == 1);
+            with_arena(|wires| wires[*wire].set((b >> i) & 1 == 1));
         }
         for mut gate in circuit.1 {
             gate.evaluate();
         }
         let mut result_bits = Vec::new();
         for wire in outputs[0].clone() {
-            result_bits.push(wire.borrow().get_value());
+            result_bits.push(with_arena(|wires| wires[wire].get_value()));
         }
         let mut c: u64 = 0;
         for bit in result_bits.iter().rev() {
@@ -150,17 +152,17 @@ mod tests {
         let a: u64 = rng().random();
         let b: u64 = rng().random();
         for (i, wire) in inputs[0].iter().enumerate() {
-            wire.borrow_mut().set((a >> i) & 1 == 1);
+            with_arena(|wires| wires[*wire].set((a >> i) & 1 == 1));
         }
         for (i, wire) in inputs[1].iter().enumerate() {
-            wire.borrow_mut().set((b >> i) & 1 == 1);
+            with_arena(|wires| wires[*wire].set((b >> i) & 1 == 1));
         }
         for mut gate in circuit.1 {
             gate.evaluate();
         }
         let mut result_bits = Vec::new();
         for wire in outputs[0].clone() {
-            result_bits.push(wire.borrow().get_value());
+            result_bits.push(with_arena(|wires| wires[wire].get_value()));
         }
         let mut c: u64 = 0;
         for bit in result_bits.iter().rev() {

@@ -1,3 +1,4 @@
+use crate::core::wire::WireOps;
 use crate::{
     bag::*,
     circuits::{
@@ -76,7 +77,7 @@ impl G1Projective {
             .iter()
             .map(|bit| {
                 let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                wire.set(*bit);
                 wire
             })
             .collect()
@@ -87,11 +88,11 @@ impl G1Projective {
     }
 
     pub fn from_wires(wires: Wires) -> ark_bn254::G1Projective {
-        Self::from_bits(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_wires_unchecked(wires: Wires) -> ark_bn254::G1Projective {
-        Self::from_bits_unchecked(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits_unchecked(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_montgomery_wires_unchecked(wires: Wires) -> ark_bn254::G1Projective {
@@ -625,7 +626,7 @@ impl G1Affine {
             .iter()
             .map(|bit| {
                 let wire = new_wirex();
-                wire.borrow_mut().set(*bit);
+                wire.set(*bit);
                 wire
             })
             .collect()
@@ -636,11 +637,11 @@ impl G1Affine {
     }
 
     pub fn from_wires(wires: Wires) -> ark_bn254::G1Affine {
-        Self::from_bits(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_wires_unchecked(wires: Wires) -> ark_bn254::G1Affine {
-        Self::from_bits_unchecked(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+        Self::from_bits_unchecked(wires.iter().map(|wire| wire.get_value()).collect())
     }
 
     pub fn from_montgomery_wires_unchecked(wires: Wires) -> ark_bn254::G1Affine {
@@ -709,6 +710,7 @@ pub fn projective_to_affine_evaluate_montgomery(p: Wires) -> (Wires, GateCount) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::wire::WireOps;
     use ark_ec::{CurveGroup, scalar_mul::variable_base::VariableBaseMSM};
     use ark_ff::Field;
     use rand::{Rng, rng};
@@ -927,7 +929,7 @@ mod tests {
         for wire in s.iter().rev() {
             let x = rng().random();
             u = u + u + if x { 1 } else { 0 };
-            wire.borrow_mut().set(x);
+            wire.set(x);
         }
 
         let circuit = G1Projective::multiplexer(a_wires, s.clone(), w);
@@ -959,7 +961,7 @@ mod tests {
         for wire in s.iter().rev() {
             let x = rng().random();
             u = u + u + if x { 1 } else { 0 };
-            wire.borrow_mut().set(x);
+            wire.set(x);
         }
 
         let (result_wires, gate_count) = G1Projective::multiplexer_evaluate(a_wires, s.clone(), w);

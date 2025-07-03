@@ -1,4 +1,5 @@
 use crate::bag::*;
+use crate::core::wire::WireOps;
 use num_bigint::BigUint;
 use rand::{Rng, rng};
 use std::str::FromStr;
@@ -49,7 +50,7 @@ pub fn n_wires(n: usize) -> Wires {
 }
 
 pub fn biguint_from_wires(wires: Wires) -> BigUint {
-    biguint_from_bits(wires.iter().map(|wire| wire.borrow().get_value()).collect())
+    biguint_from_bits(wires.iter().map(|wire| wire.get_value()).collect())
 }
 
 pub fn change_to_neg_pos_decomposition(bits: Vec<bool>) -> Vec<i8> {

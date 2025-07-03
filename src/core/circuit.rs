@@ -1,3 +1,4 @@
+use crate::core::wire::with_arena;
 use crate::{bag::*, core::gate::GateCount};
 
 pub struct Circuit(pub Wires, pub Vec<Gate>);
@@ -73,6 +74,7 @@ impl Circuit {
 
 #[cfg(test)]
 mod tests {
+    use crate::core::wire::{WireOps, with_arena};
     use crate::core::{bristol::parser, s::S};
     use bitvm::bigint::U256;
     use bitvm::treepp::*;
@@ -95,7 +97,7 @@ mod tests {
 
         for input in inputs {
             for input_wire in input {
-                input_wire.borrow_mut().set(rng().random());
+                with_arena(|wires| wires[input_wire].set(rng().random()));
             }
         }
 
@@ -105,10 +107,13 @@ mod tests {
         );
 
         for (i, (gate, garble)) in zip(circuit.1.clone(), garbled_gates).enumerate() {
-            let a = gate.wire_a.borrow().get_label();
-            let b = gate.wire_b.borrow().get_label();
-            let bit_a = gate.wire_a.borrow().get_value();
-            let bit_b = gate.wire_b.borrow().get_value();
+            let (a, b, bit_a, bit_b) = with_arena(|wires| {
+                let a = wires[gate.wire_a].get_label();
+                let b = wires[gate.wire_b].get_label();
+                let bit_a = wires[gate.wire_a].get_value();
+                let bit_b = wires[gate.wire_b].get_value();
+                (a, b, bit_a, bit_b)
+            });
             let bit_c = (gate.f())(bit_a, bit_b);
             let (garble_check, c) = gate.check_garble(garble.clone(), bit_c);
             let gate_script = gate.script(garble, garble_check);
@@ -130,7 +135,7 @@ mod tests {
             assert!(result.success);
 
             if garble_check {
-                gate.wire_c.borrow_mut().set2(bit_c, c);
+                with_arena(|wires| wires[gate.wire_c].set2(bit_c, c));
             } else {
                 assert!(!correct);
                 break;
@@ -153,7 +158,7 @@ mod tests {
 
         for input in inputs {
             for input_wire in input {
-                input_wire.borrow_mut().set(rng().random());
+                with_arena(|wires| wires[input_wire].set(rng().random()));
             }
         }
 
@@ -163,10 +168,13 @@ mod tests {
         );
 
         for (i, (gate, garble)) in zip(circuit.1.clone(), garbled_gates).enumerate() {
-            let a = gate.wire_a.borrow().get_label();
-            let b = gate.wire_b.borrow().get_label();
-            let bit_a = gate.wire_a.borrow().get_value();
-            let bit_b = gate.wire_b.borrow().get_value();
+            let (a, b, bit_a, bit_b) = with_arena(|wires| {
+                let a = wires[gate.wire_a].get_label();
+                let b = wires[gate.wire_b].get_label();
+                let bit_a = wires[gate.wire_a].get_value();
+                let bit_b = wires[gate.wire_b].get_value();
+                (a, b, bit_a, bit_b)
+            });
             let bit_c = (gate.f())(bit_a, bit_b);
             let (garble_check, c) = gate.check_garble(garble.clone(), bit_c);
 
@@ -177,7 +185,7 @@ mod tests {
             );
 
             if garble_check {
-                gate.wire_c.borrow_mut().set2(bit_c, c);
+                with_arena(|wires| wires[gate.wire_c].set2(bit_c, c));
                 continue;
             }
             assert!(!correct);
