@@ -2,7 +2,12 @@
 
 ## Gate Count Metrics
 
-> **Note:** Gate counts are measured for k=6 (64 constraints) test circuits and can be viewed in the latest CI run artifacts.
+Gate counts are automatically measured for k=6 (64 constraints) on every push to `main` and published as dynamic badges.
+
+![Total Gates](https://img.shields.io/endpoint?url=https://<user>.github.io/garbled-snark-verifier/badge_data/total.json)
+![AND Gates](https://img.shields.io/endpoint?url=https://<user>.github.io/garbled-snark-verifier/badge_data/and.json)
+![XOR Gates](https://img.shields.io/endpoint?url=https://<user>.github.io/garbled-snark-verifier/badge_data/xor.json)
+![NOT Gates](https://img.shields.io/endpoint?url=https://<user>.github.io/garbled-snark-verifier/badge_data/not.json)
 
 A: operator, B: verifier
 

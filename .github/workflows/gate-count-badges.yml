@@ -67,5 +67,13 @@ jobs:
       with:
         name: gate-counts
         path: |
-          gates.json
-          badge_data/
+          gates.json          badge_data/
+
+    - name: Deploy badge JSONs to gh-badges branch
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./badge_data
+        publish_branch: gh-badges
+        destination_dir: badge_data
