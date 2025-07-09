@@ -97,7 +97,8 @@ fn main() {
     let proof_a = G1Affine::wires_set_montgomery(proof.a);
     let proof_b = G2Affine::wires_set_montgomery(proof.b);
     let proof_c = G1Affine::wires_set_montgomery(proof.c);
-    let (result, gate_count) = groth16_verifier_evaluate_montgomery(public, proof_a, proof_b, proof_c, vk, false);
+    let (result, gate_count) =
+        groth16_verifier_evaluate_montgomery(public, proof_a, proof_b, proof_c, vk, false);
 
     if json_output {
         let and_variants = gate_count.nonfree_gate_count();
