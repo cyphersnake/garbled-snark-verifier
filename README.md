@@ -1,5 +1,9 @@
 # Garbled SNARK Verifier Circuit
 
+## Gate Count Metrics
+
+> **Note:** Gate counts are measured for k=6 (64 constraints) test circuits and can be viewed in the latest CI run artifacts.
+
 A: operator, B: verifier
 
 0. A and B agree on the circuit.

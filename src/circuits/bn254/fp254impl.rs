@@ -2,10 +2,7 @@ use crate::{
     bag::*,
     circuits::{
         basic::selector,
-        bigint::{
-            U254,
-            utils::bits_from_biguint,
-        },
+        bigint::{U254, utils::bits_from_biguint},
         bn254::fq::Fq,
     },
 };
@@ -313,7 +310,7 @@ pub trait Fp254Impl {
             circuit.add_wires(result);
             circuit
         }
-        /* 
+        /*
         {
             let nb_digits = change_to_neg_pos_decomposition(b_bits.clone());
             let a_inv = circuit.extend(Self::inverse_montgomery(a.clone()));
@@ -328,15 +325,18 @@ pub trait Fp254Impl {
             }
             circuit.add_wires(result);
             circuit
-        }  
-        */      
+        }
+        */
     }
 
     fn exp_by_constant_montgomery_evaluate(a: Wires, b: BigUint) -> (Wires, GateCount) {
         assert_eq!(a.len(), Self::N_BITS);
 
-        if b.is_zero() {            
-            return (Fq::wires_set_montgomery(ark_bn254::Fq::ONE), GateCount::zero());
+        if b.is_zero() {
+            return (
+                Fq::wires_set_montgomery(ark_bn254::Fq::ONE),
+                GateCount::zero(),
+            );
         }
 
         if b.is_one() {
@@ -365,7 +365,7 @@ pub trait Fp254Impl {
             }
             (result, gc)
         }
-        /* 
+        /*
         {
             let nb_digits = change_to_neg_pos_decomposition(b_bits.clone());
             let a_inv = circuit.extend(Self::inverse_montgomery(a.clone()));
@@ -380,10 +380,9 @@ pub trait Fp254Impl {
             }
             circuit.add_wires(result);
             circuit
-        }  
-        */      
+        }
+        */
     }
-
 
     fn montgomery_reduce(x: Wires) -> Circuit {
         let mut circuit = Circuit::empty();
@@ -426,7 +425,6 @@ pub trait Fp254Impl {
         }
         (circuit.0.clone(), circuit.gate_counts())
     }
-
 
     fn mul_by_constant(a: Wires, b: ark_bn254::Fq) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);

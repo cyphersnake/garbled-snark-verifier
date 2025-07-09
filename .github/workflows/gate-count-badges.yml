@@ -1,0 +1,71 @@
+name: Update Gate Count Badges
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  gate-count:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+    
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Build project
+      run: cargo build --workspace --all-targets --all-features --release
+    
+    - name: Run gate count examples
+      run: |
+        echo "Running gate count..."
+        cargo run --example groth16_gc_gate_count --release -- --json > gates.json
+        
+        echo "Gate count results:"
+        cat gates.json
+    
+    - name: Extract gate counts and create badges
+      run: |
+        # Extract formatted gate counts from JSON
+        TOTAL=$(jq -r '.gate_count.total_formatted' gates.json)
+        AND=$(jq -r '.gate_count.and_variants_formatted' gates.json)
+        XOR=$(jq -r '.gate_count.xor_variants_formatted' gates.json)
+        NOT=$(jq -r '.gate_count.not_formatted' gates.json)
+        
+        # Create badge JSON files for shields.io endpoint
+        mkdir -p badge_data
+        
+        # Create shields.io endpoint format JSON files
+        echo "{\"schemaVersion\": 1, \"label\": \"Total Gates\", \"message\": \"${TOTAL}\", \"color\": \"blue\"}" > badge_data/total.json
+        echo "{\"schemaVersion\": 1, \"label\": \"AND Gates\", \"message\": \"${AND}\", \"color\": \"green\"}" > badge_data/and.json
+        echo "{\"schemaVersion\": 1, \"label\": \"XOR Gates\", \"message\": \"${XOR}\", \"color\": \"orange\"}" > badge_data/xor.json
+        echo "{\"schemaVersion\": 1, \"label\": \"NOT Gates\", \"message\": \"${NOT}\", \"color\": \"red\"}" > badge_data/not.json
+        
+        # Display badge data
+        echo "Badge data created:"
+        ls -la badge_data/
+        for file in badge_data/*.json; do
+          echo "$(basename $file .json): $(cat $file)"
+        done
+    
+    - name: Upload gate count artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: gate-counts
+        path: |
+          gates.json
+          badge_data/
