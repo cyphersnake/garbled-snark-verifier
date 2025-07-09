@@ -66,8 +66,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: gate-counts
-        path: |
-          gates.json          badge_data/
+        path: |        destination_dir: badge_data
 
     - name: Deploy badge JSONs to gh-badges branch
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
