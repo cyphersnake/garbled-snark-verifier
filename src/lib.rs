@@ -1,16 +1,15 @@
-pub mod circuits;
-pub mod core;
+mod circuit;
+mod delta;
+mod gate;
+mod gate_type;
+mod math;
+mod s;
+mod wire;
 
-pub mod bag {
-    pub use crate::core::circuit::Circuit;
-    pub use crate::core::gate::Gate;
-    pub use crate::core::s::S;
-    pub use crate::core::wire::Wire;
-    pub use std::{cell::RefCell, rc::Rc};
-    pub type Wirex = Rc<RefCell<Wire>>;
-    pub type Wires = Vec<Wirex>;
-    pub use crate::core::gate::GateCount;
-    pub fn new_wirex() -> Wirex {
-        Rc::new(RefCell::new(Wire::new()))
-    }
-}
+pub use circuit::{BigIntWires, Circuit, CircuitError, GarbledCircuit};
+pub use delta::Delta;
+pub use gate::{Error as GateError, Gate};
+pub use gate_type::GateType;
+pub use math::*;
+pub use s::S;
+pub use wire::{EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId};

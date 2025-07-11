@@ -37,13 +37,13 @@ pub fn calculate_montgomery_constants(modulus: BigUint, r: BigUint) -> (BigUint,
 }
 
 #[cfg(test)]
-pub mod tests {
+mod tests {
     use super::*;
-    use crate::circuits::bn254::{fp254impl::Fp254Impl, fq::Fq, fr::Fr};
 
-    fn test_montgomery_constants<T: Fp254Impl>() {
-        let modulus = T::modulus_as_biguint();
-        let r = T::montgomery_r_as_biguint();
+    #[test]
+    fn test_montgomery_constants_basic() {
+        let modulus = BigUint::from(97u32);
+        let r = BigUint::from(128u32);
         let (r_inv, n_p) = calculate_montgomery_constants(modulus.clone(), r.clone());
 
         assert_eq!(
@@ -51,20 +51,15 @@ pub mod tests {
             BigUint::one()
         );
         assert_eq!((n_p.clone() * modulus.clone()) % r.clone(), BigUint::one());
-
-        println!("modulus inverse: {}\nr_inverse: {}", n_p, r_inv);
-
-        assert_eq!(T::montgomery_m_inverse_as_biguint(), n_p);
-        assert_eq!(T::montgomery_r_inverse_as_biguint(), r_inv);
     }
 
     #[test]
-    fn test_montgomery_constants_fq() {
-        test_montgomery_constants::<Fq>();
-    }
-
-    #[test]
-    fn test_montgomery_constants_fr() {
-        test_montgomery_constants::<Fr>();
+    fn test_extended_gcd() {
+        let a = BigInt::from(48);
+        let b = BigInt::from(18);
+        let (gcd, x, y) = extended_gcd(&a, &b);
+        
+        assert_eq!(gcd, BigInt::from(6));
+        assert_eq!(a.clone() * x + b.clone() * y, gcd);
     }
 }

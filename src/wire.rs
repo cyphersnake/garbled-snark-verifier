@@ -1,0 +1,155 @@
+use std::{fmt, ops::Deref};
+
+use crate::{s::S, Delta};
+
+/// Errors that can occur during wire operations
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum WireError {
+    /// Wire with the given ID was not found
+    #[error("Wire with id {0} not found")]
+    WireNotFound(WireId),
+    /// Wire with the given ID is already initialized
+    #[error("Wire with id {0} already initialized")]
+    WireAlreadyInitialized(WireId),
+    /// Invalid wire index provided
+    #[error("Invalid wire index: {0}")]
+    InvalidWireIndex(WireId),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct WireId(pub usize);
+
+impl fmt::Display for WireId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Deref for WireId {
+    type Target = usize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GarbledWire {
+    pub label0: S,
+    pub label1: S,
+}
+
+impl GarbledWire {
+    pub(super) fn new(label0: S, label1: S) -> Self {
+        GarbledWire { label0, label1 }
+    }
+
+    pub fn random(delta: &Delta) -> Self {
+        let mut label0 = S::random();
+        label0.0[31] &= 0xFE; // LSB = 0
+
+        GarbledWire {
+            label0,
+            // free-XOR: label1 = label0 ^ Δ
+            label1: label0 ^ delta,
+        }
+    }
+
+    pub fn select(&self, bit: bool) -> S {
+        match bit {
+            false => self.label0,
+            true => self.label1,
+        }
+    }
+
+    pub fn evaluate(&self, bit: bool) -> EvaluatedWire {
+        EvaluatedWire {
+            active_label: self.select(bit),
+        }
+    }
+}
+
+mod garbled_wires {
+    use std::mem::MaybeUninit;
+
+    use bitvec::vec::BitVec;
+
+    use super::{GarbledWire, WireError, WireId};
+
+    #[derive(Debug)]
+    pub struct GarbledWires {
+        wires: Vec<MaybeUninit<GarbledWire>>,
+        initialized: BitVec,
+    }
+
+    impl GarbledWires {
+        pub fn new(num_wires: usize) -> Self {
+            Self {
+                wires: {
+                    // Safe because we won't read before writing
+                    let mut vec = Vec::with_capacity(num_wires);
+                    vec.resize_with(num_wires, MaybeUninit::uninit);
+                    vec
+                },
+                initialized: BitVec::repeat(false, num_wires),
+            }
+        }
+
+        pub fn get(&self, wire_id: WireId) -> Result<&GarbledWire, WireError> {
+            if wire_id.0 >= self.initialized.len() || !self.initialized[wire_id.0] {
+                return Err(WireError::InvalidWireIndex(wire_id));
+            }
+
+            // SAFETY: We checked it's initialized
+            Ok(unsafe { self.wires[wire_id.0].assume_init_ref() })
+        }
+
+        pub fn init(
+            &mut self,
+            wire_id: WireId,
+            wire: GarbledWire,
+        ) -> Result<&GarbledWire, WireError> {
+            self.ensure_capacity(wire_id.0 + 1)?;
+
+            if self.initialized[wire_id.0] {
+                return Err(WireError::InvalidWireIndex(wire_id));
+            }
+
+            self.wires[wire_id.0] = MaybeUninit::new(wire);
+            self.initialized.set(wire_id.0, true);
+            self.get(wire_id)
+        }
+
+        pub fn get_or_init<F>(
+            &mut self,
+            wire_id: WireId,
+            init: F,
+        ) -> Result<&GarbledWire, WireError>
+        where
+            F: FnOnce() -> GarbledWire,
+        {
+            self.ensure_capacity(wire_id.0 + 1)?;
+
+            if !self.initialized[wire_id.0] {
+                let wire = init();
+                self.wires[wire_id.0] = MaybeUninit::new(wire);
+                self.initialized.set(wire_id.0, true);
+            }
+
+            Ok(unsafe { self.wires[wire_id.0].assume_init_ref() })
+        }
+
+        fn ensure_capacity(&mut self, size: usize) -> Result<(), WireError> {
+            if self.wires.len() < size {
+                self.wires.resize_with(size, MaybeUninit::uninit);
+                self.initialized.resize(size, false);
+            }
+            Ok(())
+        }
+    }
+}
+pub use garbled_wires::GarbledWires;
+
+#[derive(Clone, Debug)]
+pub struct EvaluatedWire {
+    pub active_label: S,
+}
