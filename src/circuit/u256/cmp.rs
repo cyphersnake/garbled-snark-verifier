@@ -155,6 +155,7 @@ pub fn multiplexer(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test_log::test;
 
     fn test_comparison_operation(
         n_bits: usize,

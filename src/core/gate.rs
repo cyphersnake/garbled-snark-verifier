@@ -212,76 +212,58 @@ impl Gate {
     }
 
     pub fn garble(&self, wires: &mut GarbledWires, delta: &Delta) -> Result<Vec<S>, Error> {
+        log::debug!("gate_garble: {:?} {}+{}->{}", self.gate_type, self.wire_a, self.wire_b, self.wire_c);
         match self.gate_type {
             GateType::Xor => {
                 let a = self.wire_a(wires, delta)?.select(false);
                 let b = self.wire_b(wires, delta)?.select(false);
-
                 let c0 = a ^ &b;
                 let c1 = c0 ^ delta;
-
+                log::debug!("gate_garble: XOR c0={c0:?} c1={c1:?}");
                 self.init_wire_c(wires, c0, c1)?;
-
                 Ok(vec![])
             }
-
             GateType::Xnor => {
                 let a = self.wire_a(wires, delta)?.select(false);
                 let b = self.wire_b(wires, delta)?.select(false);
-
                 let c1 = a ^ &b;
                 let c0 = c1 ^ delta;
-
+                log::debug!("gate_garble: XNOR c0={c0:?} c1={c1:?}");
                 self.init_wire_c(wires, c0, c1)?;
-
                 Ok(vec![])
             }
             GateType::Not => {
                 let a = self.wire_a(wires, delta)?;
-
-                let c0 = a.select(true); // a₁
-                let c1 = a.select(false); // a₀
-
+                let c0 = a.select(true);
+                let c1 = a.select(false);
+                log::debug!("gate_garble: NOT c0={c0:?} c1={c1:?}");
                 self.init_wire_c(wires, c0, c1)?;
-
                 Ok(vec![])
             }
             _gt => {
                 let gate_f = self.gate_type.f();
-
                 let c = wires
                     .init(self.wire_c, GarbledWire::random(delta))
                     .map_err(|err| Error::GetOrInitWire { wire: "c", err })?
                     .clone();
-
                 let a = self.wire_a(wires, delta)?.clone();
                 let b = self.wire_b(wires, delta)?;
-
-                Ok({
-                    [(false, false), (false, true), (true, false), (true, true)]
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, (i, j))| {
-                            let k = (gate_f)(*i, *j);
-                            let a = a.select(*i);
-                            let b = b.select(*j);
-                            let c = c.select(k);
-                            let res = c.neg() + S::hash_together(a, b);
-                            println!(
-                                "
-                                idx={idx}
-                                a={a:?}
-                                b={b:?}
-                                c={c:?}
-                                !c={:?}
-                                res={res:?}
-                            ",
-                                c.neg()
-                            );
-                            res
-                        })
-                        .collect()
-                })
+                
+                let table = [(false, false), (false, true), (true, false), (true, true)]
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, (i, j))| {
+                        let k = (gate_f)(*i, *j);
+                        let a_label = a.select(*i);
+                        let b_label = b.select(*j);
+                        let c_label = c.select(k);
+                        let res = c_label.neg() + S::hash_together(a_label, b_label);
+                        log::debug!("gate_garble: table[{idx}] i={i} j={j} k={k} res={res:?}");
+                        res
+                    })
+                    .collect();
+                log::debug!("gate_garble: generated table with {} entries", 4);
+                Ok(table)
             }
         }
     }
@@ -294,32 +276,33 @@ impl Gate {
         table: &[Vec<S>],
         table_gate_index: &mut usize,
     ) -> S {
+        log::debug!("gate_eval: {:?} a={:?} b={:?}", self.gate_type, a, b);
+        
         match self.gate_type {
-            GateType::Xor => a ^ &b,
-            GateType::Xnor => (a ^ &b) ^ delta,
-            GateType::Not => a ^ delta,
+            GateType::Xor => {
+                let res = a ^ &b;
+                log::debug!("gate_eval: XOR result={res:?}");
+                res
+            },
+            GateType::Xnor => {
+                let res = (a ^ &b) ^ delta;
+                log::debug!("gate_eval: XNOR result={res:?}");
+                res
+            },
+            GateType::Not => {
+                let res = a ^ delta;
+                log::debug!("gate_eval: NOT result={res:?}");
+                res
+            },
             _gt => {
                 let i = a.0[31] & 1;
                 let j = b.0[31] & 1;
-
                 let idx = ((i << 1) | j) as usize;
-
                 let ct = &table[*table_gate_index][idx];
-
+                log::debug!("gate_eval: table lookup i={} j={} idx={} table_gate_idx={}", i, j, idx, *table_gate_index);
                 *table_gate_index += 1;
-
                 let res = ct.neg() + S::hash_together(a, b);
-                println!(
-                    "
-                    idx={idx}
-                    a={a:?}
-                    b={b:?}
-                    c={ct:?}
-                    !c={:?}
-                    res={res:?}
-                ",
-                    ct.neg()
-                );
+                log::debug!("gate_eval: table result ct={:?} hash={:?} final={:?}", ct, S::hash_together(a, b), res);
                 res
             }
         }

@@ -63,19 +63,46 @@ impl Circuit {
     }
 
     pub fn garble(&self) -> Result<GarbledCircuit, CircuitError> {
+        log::debug!(
+            "garble: start wires={} gates={}",
+            self.num_wire,
+            self.gates.len()
+        );
         let mut wires = GarbledWires::new(self.num_wire);
         let delta = Delta::generate();
+        log::debug!("garble: delta={delta:?}");
 
         let garbled_table = self
             .gates
             .iter()
-            .filter_map(|g| match g.garble(&mut wires, &delta) {
-                Ok(row) if row.is_empty().not() => Some(Ok(row)),
-                Ok(_) => None,
-                Err(err) => Some(Err(err)),
+            .enumerate()
+            .filter_map(|(i, g)| {
+                log::debug!(
+                    "garble: gate[{}] {:?} {}+{}->{}",
+                    i,
+                    g.gate_type,
+                    g.wire_a,
+                    g.wire_b,
+                    g.wire_c
+                );
+                match g.garble(&mut wires, &delta) {
+                    Ok(row) if row.is_empty().not() => {
+                        log::debug!("garble: gate[{}] table_entries={}", i, row.len());
+                        Some(Ok(row))
+                    }
+                    Ok(_) => {
+                        log::debug!("garble: gate[{i}] free");
+                        None
+                    }
+                    Err(err) => {
+                        log::error!("garble: gate[{i}] error={err:?}");
+                        Some(Err(err))
+                    }
+                }
             })
             .collect::<Result<Vec<Vec<_>>, _>>()?;
 
+        log::debug!("garble: complete table_size={}", garbled_table.len());
         Ok(GarbledCircuit {
             structure: self.clone(),
             wires,
@@ -111,18 +138,24 @@ impl GarbledCircuit {
         &self,
         get_input: impl Fn(WireId) -> Option<bool>,
     ) -> Result<impl Iterator<Item = Result<(WireId, bool), Error>>, Error> {
+        log::debug!(
+            "evaluate: start wires={} gates={} table_entries={}",
+            self.structure.num_wire,
+            self.structure.gates.len(),
+            self.garbled_table.len()
+        );
         let mut evaluated = vec![None; self.structure.num_wire];
 
         self.structure.input_wires.iter().try_for_each(|wire_id| {
             let value = (get_input)(*wire_id).ok_or(Error::LostInput(*wire_id))?;
-
-            evaluated[wire_id.0] = Some(self.wires.get(*wire_id)?.select(value));
-
+            let label = self.wires.get(*wire_id)?.select(value);
+            log::debug!("evaluate: input {wire_id}={value} label={label:?}");
+            evaluated[wire_id.0] = Some(label);
             Result::<_, Error>::Ok(())
         })?;
 
         let mut non_free_gate_index = 0;
-        for gate in self.structure.gates.iter() {
+        for (i, gate) in self.structure.gates.iter().enumerate() {
             let a = evaluated[gate.wire_a.0].ok_or(Error::WrongGateOrder {
                 gate: gate.clone(),
                 wire_id: gate.wire_a,
@@ -131,7 +164,15 @@ impl GarbledCircuit {
                 gate: gate.clone(),
                 wire_id: gate.wire_b,
             })?;
+            log::debug!(
+                "evaluate: gate[{}] {:?} a={:?} b={:?}",
+                i,
+                gate.gate_type,
+                a,
+                b
+            );
 
+            let table_idx_before = non_free_gate_index;
             let evaluated_label = gate.evaluate(
                 a,
                 b,
@@ -139,6 +180,8 @@ impl GarbledCircuit {
                 &self.garbled_table,
                 &mut non_free_gate_index,
             );
+            let used_table = non_free_gate_index > table_idx_before;
+            log::debug!("evaluate: gate[{i}] out={evaluated_label:?} table_used={used_table}");
             evaluated[gate.wire_c.0] = Some(evaluated_label);
 
             #[cfg(test)]
@@ -156,15 +199,19 @@ impl GarbledCircuit {
             }
         }
 
+        log::debug!("evaluate: complete used_table_entries={non_free_gate_index}");
         Ok(self.structure.output_wires.iter().map(move |&wire_id| {
             let label = evaluated[wire_id.0].ok_or(Error::OutputWireNotEval(wire_id))?;
             let wire = self.wires.get(wire_id)?;
-
-            match label {
+            let result = match label {
                 l if l.eq(&wire.label0) => Ok((wire_id, false)),
                 l if l.eq(&wire.label1) => Ok((wire_id, true)),
                 _l => panic!("logic is broken, at wire_id {wire_id}"),
+            };
+            if let Ok((id, val)) = &result {
+                log::debug!("evaluate: output {id}={val}");
             }
+            result
         }))
     }
 }

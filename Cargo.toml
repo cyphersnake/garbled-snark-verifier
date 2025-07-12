@@ -11,3 +11,6 @@ num-bigint = { version = "0.4", features = ["rand"] }
 num-traits = "0.2"
 rand = "0.9.1"
 thiserror = "2.0.12"
+
+[dev-dependencies]
+test-log = "0.2.8"
