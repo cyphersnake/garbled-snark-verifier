@@ -1,11 +1,6 @@
 use std::ops::Not;
 
-use crate::{
-    gate::{Gate, GateError},
-    s::S,
-    wire::{GarbledWires, WireId},
-    Delta, WireError,
-};
+use crate::{Delta, GarbledWires, Gate, GateError, WireError, WireId, S};
 
 mod basic;
 mod u256;
@@ -153,7 +148,10 @@ impl GarbledCircuit {
 
                 match evaluated_label {
                     l if l.eq(&wire.label1) | l.eq(&wire.label0) => (),
-                    _l => panic!("test-check: logic is broken, at wire_id {}", gate.wire_c),
+                    l => panic!(
+                        "test-check: logic is broken, at wire_id {} with {l:?}",
+                        gate.wire_c
+                    ),
                 }
             }
         }

@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::s::S;
+use crate::S;
 
 /// A wrapper type for the global Free-XOR delta `Δ`,
 /// ensuring that its permutation bit (LSB of the last byte) is always `1`.

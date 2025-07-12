@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 bitvec = "1.0.1"
 blake3 = "1.6.1"
+log = "0.4.27"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-traits = "0.2"
 rand = "0.9.1"

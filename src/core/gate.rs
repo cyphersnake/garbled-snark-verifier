@@ -1,18 +1,15 @@
-pub use crate::gate_type::GateType;
-use crate::{
-    s::S,
-    wire::{GarbledWire, GarbledWires, WireId},
-    Delta, WireError,
-};
+pub use crate::GateType;
+use crate::{Delta, GarbledWire, GarbledWires, WireError, WireId, S};
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
     #[error("Error while get wire {wire}: {err:?}")]
-    GetWireError { wire: &'static str, err: WireError },
+    GetWire { wire: &'static str, err: WireError },
     #[error("Error while init wire {wire}: {err:?}")]
-    InitWireError { wire: &'static str, err: WireError },
+    InitWire { wire: &'static str, err: WireError },
     #[error("Error while get_or_init wire {wire}: {err:?}")]
-    GetOrInitWireError { wire: &'static str, err: WireError },
+    GetOrInitWire { wire: &'static str, err: WireError },
 }
 pub type GateError = Error;
 
@@ -194,7 +191,7 @@ impl Gate {
     ) -> Result<&'w GarbledWire, Error> {
         wires
             .get_or_init(self.wire_a, || GarbledWire::random(delta))
-            .map_err(|err| Error::GetWireError { wire: "a", err })
+            .map_err(|err| Error::GetWire { wire: "a", err })
     }
 
     fn wire_b<'w>(
@@ -204,13 +201,13 @@ impl Gate {
     ) -> Result<&'w GarbledWire, Error> {
         wires
             .get_or_init(self.wire_b, || GarbledWire::random(delta))
-            .map_err(|err| Error::GetWireError { wire: "b", err })
+            .map_err(|err| Error::GetWire { wire: "b", err })
     }
 
     fn init_wire_c(&self, wires: &mut GarbledWires, label0: S, label1: S) -> Result<(), Error> {
         wires
             .init(self.wire_c, GarbledWire::new(label0, label1))
-            .map_err(|err| Error::InitWireError { wire: "c", err })
+            .map_err(|err| Error::InitWire { wire: "c", err })
             .map(|_| ())
     }
 
@@ -254,7 +251,7 @@ impl Gate {
 
                 let c = wires
                     .init(self.wire_c, GarbledWire::random(delta))
-                    .map_err(|err| Error::GetOrInitWireError { wire: "c", err })?
+                    .map_err(|err| Error::GetOrInitWire { wire: "c", err })?
                     .clone();
 
                 let a = self.wire_a(wires, delta)?.clone();
@@ -263,12 +260,25 @@ impl Gate {
                 Ok({
                     [(false, false), (false, true), (true, false), (true, true)]
                         .iter()
-                        .map(|(i, j)| {
+                        .enumerate()
+                        .map(|(idx, (i, j))| {
                             let k = (gate_f)(*i, *j);
                             let a = a.select(*i);
                             let b = b.select(*j);
                             let c = c.select(k);
-                            c + S::hash_together(a, b).neg()
+                            let res = c.neg() + S::hash_together(a, b);
+                            println!(
+                                "
+                                idx={idx}
+                                a={a:?}
+                                b={b:?}
+                                c={c:?}
+                                !c={:?}
+                                res={res:?}
+                            ",
+                                c.neg()
+                            );
+                            res
                         })
                         .collect()
                 })
@@ -298,8 +308,19 @@ impl Gate {
 
                 *table_gate_index += 1;
 
-                let hash = S::hash_together(a, b);
-                *ct + hash
+                let res = ct.neg() + S::hash_together(a, b);
+                println!(
+                    "
+                    idx={idx}
+                    a={a:?}
+                    b={b:?}
+                    c={ct:?}
+                    !c={:?}
+                    res={res:?}
+                ",
+                    ct.neg()
+                );
+                res
             }
         }
     }

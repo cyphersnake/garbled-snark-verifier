@@ -74,12 +74,10 @@ pub fn equal_zero(circuit: &mut Circuit, a: &BigIntWires) -> WireId {
     }
 
     let mut res = circuit.issue_wire();
-    dbg!(&res);
     circuit.add_gate(Gate::xnor(a.bits[0], a.bits[1], res));
 
     a.iter().skip(1).for_each(|a_i| {
         let next_res = circuit.issue_wire();
-        dbg!(&next_res);
         circuit.add_gate(Gate::and_variant(*a_i, res, next_res, [true, false, false]));
         res = next_res;
     });

@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     iter::zip,
     ops::{Add, BitXor},
 };
@@ -6,7 +7,7 @@ use std::{
 use blake3::hash;
 use rand::{rng, Rng};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct S(pub [u8; 32]);
 
 impl S {
@@ -14,6 +15,14 @@ impl S {
         let mut s = [0_u8; 32];
         s[31] = 1;
         Self(s)
+    }
+
+    pub fn to_hex(&self) -> String {
+        self.0
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<Vec<String>>()
+            .join("")
     }
 
     pub fn random() -> Self {
@@ -46,6 +55,12 @@ impl S {
                 .try_into()
                 .unwrap(),
         )
+    }
+}
+
+impl fmt::Debug for S {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "S({})", self.to_hex())
     }
 }
 

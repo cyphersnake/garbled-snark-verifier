@@ -1,6 +1,6 @@
 use std::{fmt, ops::Deref};
 
-use crate::{s::S, Delta};
+use crate::{Delta, S};
 
 /// Errors that can occur during wire operations
 #[derive(Debug, Clone, thiserror::Error)]

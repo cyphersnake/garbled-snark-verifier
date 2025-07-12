@@ -1,15 +1,14 @@
 mod circuit;
-mod delta;
-mod gate;
-mod gate_type;
+mod core;
 mod math;
-mod s;
-mod wire;
+
+pub use core::{
+    delta::Delta,
+    gate::{Gate, GateError},
+    gate_type::GateType,
+    s::S,
+    wire::{EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId},
+};
 
 pub use circuit::{BigIntWires, Circuit, CircuitError, GarbledCircuit};
-pub use delta::Delta;
-pub use gate::{Error as GateError, Gate};
-pub use gate_type::GateType;
 pub use math::*;
-pub use s::S;
-pub use wire::{EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId};
