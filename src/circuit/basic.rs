@@ -84,6 +84,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use log::debug;
 
     #[test]
     fn test_half_adder() {
@@ -344,5 +345,40 @@ mod tests {
                     unreachable!("no output Wire like that {wire_id}")
                 }
             });
+    }
+
+    #[test]
+    fn xnor_connection_test() {
+        let mut circuit = Circuit::default();
+
+        let a_wire = circuit.issue_input_wire();
+        let b_wire = circuit.issue_input_wire();
+
+        let not_a_wire = circuit.issue_wire();
+        let not_a_and_b = circuit.issue_wire();
+        debug!(
+            "\n            a_wire = {a_wire:?},\n            b_wire = {b_wire:?},\n            not_a_wire = {not_a_wire:?},\n            not_a_and_b = {not_a_and_b:?}\n        "
+        );
+
+        circuit.add_gate(Gate::not(a_wire, not_a_wire));
+        circuit.add_gate(Gate::and(not_a_wire, b_wire, not_a_and_b));
+
+        circuit.make_wire_output(not_a_wire);
+        circuit.make_wire_output(not_a_and_b);
+
+        circuit
+            .garble()
+            .unwrap()
+            .evaluate(|id| {
+                if id == a_wire {
+                    Some(true)
+                } else if id == b_wire {
+                    Some(false)
+                } else {
+                    None
+                }
+            })
+            .unwrap()
+            .for_each(|res| debug!("{:?}", res));
     }
 }
