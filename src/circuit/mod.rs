@@ -1,6 +1,6 @@
 use std::ops::Not;
 
-use crate::{Delta, GarbledWires, Gate, GateError, WireError, WireId, S};
+use crate::{Delta, GarbledWires, Gate, GateError, S, WireError, WireId};
 
 mod basic;
 mod u256;
@@ -144,26 +144,48 @@ impl GarbledCircuit {
             self.structure.gates.len(),
             self.garbled_table.len()
         );
-        let mut evaluated = vec![None; self.structure.num_wire];
+        let mut evaluated: Vec<Option<(S, bool)>> = vec![None; self.structure.num_wire];
 
         self.structure.input_wires.iter().try_for_each(|wire_id| {
             let value = (get_input)(*wire_id).ok_or(Error::LostInput(*wire_id))?;
             let label = self.wires.get(*wire_id)?.select(value);
             log::debug!("evaluate: input {wire_id}={value} label={label:?}");
-            evaluated[wire_id.0] = Some(label);
+            evaluated[wire_id.0] = Some((label, value));
             Result::<_, Error>::Ok(())
         })?;
 
         let mut non_free_gate_index = 0;
         for (i, gate) in self.structure.gates.iter().enumerate() {
-            let a = evaluated[gate.wire_a.0].ok_or(Error::WrongGateOrder {
-                gate: gate.clone(),
-                wire_id: gate.wire_a,
-            })?;
-            let b = evaluated[gate.wire_b.0].ok_or(Error::WrongGateOrder {
-                gate: gate.clone(),
-                wire_id: gate.wire_b,
-            })?;
+            let a = match evaluated[gate.wire_a.0] {
+                Some(v) => v,
+                None => {
+                    if let Some(val) = (get_input)(gate.wire_a) {
+                        let label = self.wires.get(gate.wire_a)?.select(val);
+                        evaluated[gate.wire_a.0] = Some((label, val));
+                        (label, val)
+                    } else {
+                        return Err(Error::WrongGateOrder {
+                            gate: gate.clone(),
+                            wire_id: gate.wire_a,
+                        });
+                    }
+                }
+            };
+            let b = match evaluated[gate.wire_b.0] {
+                Some(v) => v,
+                None => {
+                    if let Some(val) = (get_input)(gate.wire_b) {
+                        let label = self.wires.get(gate.wire_b)?.select(val);
+                        evaluated[gate.wire_b.0] = Some((label, val));
+                        (label, val)
+                    } else {
+                        return Err(Error::WrongGateOrder {
+                            gate: gate.clone(),
+                            wire_id: gate.wire_b,
+                        });
+                    }
+                }
+            };
             log::debug!(
                 "evaluate: gate[{}] {:?} a={:?} b={:?}",
                 i,
@@ -173,9 +195,11 @@ impl GarbledCircuit {
             );
 
             let table_idx_before = non_free_gate_index;
+            let c_wire = self.wires.get(gate.wire_c)?;
             let evaluated_label = gate.evaluate(
                 a,
                 b,
+                (c_wire.label0, c_wire.label1),
                 &self.delta,
                 &self.garbled_table,
                 &mut non_free_gate_index,
@@ -186,11 +210,16 @@ impl GarbledCircuit {
 
             #[cfg(test)]
             {
-                let evaluated_label = evaluated[gate.wire_c.0].unwrap();
+                let (label, bit) = evaluated[gate.wire_c.0].unwrap();
                 let wire = self.wires.get(gate.wire_c).unwrap();
 
-                match evaluated_label {
-                    l if l.eq(&wire.label1) | l.eq(&wire.label0) => (),
+                match label {
+                    l if l.eq(&wire.label0) && !bit => (),
+                    l if l.eq(&wire.label1) && bit => (),
+                    l if l.eq(&wire.label0) || l.eq(&wire.label1) => panic!(
+                        "test-check: label-bit mismatch at wire_id {} with {l:?} and bit {bit}",
+                        gate.wire_c
+                    ),
                     l => panic!(
                         "test-check: logic is broken, at wire_id {} with {l:?}",
                         gate.wire_c
@@ -201,11 +230,14 @@ impl GarbledCircuit {
 
         log::debug!("evaluate: complete used_table_entries={non_free_gate_index}");
         Ok(self.structure.output_wires.iter().map(move |&wire_id| {
-            let label = evaluated[wire_id.0].ok_or(Error::OutputWireNotEval(wire_id))?;
+            let (label, bit) = evaluated[wire_id.0].ok_or(Error::OutputWireNotEval(wire_id))?;
             let wire = self.wires.get(wire_id)?;
             let result = match label {
-                l if l.eq(&wire.label0) => Ok((wire_id, false)),
-                l if l.eq(&wire.label1) => Ok((wire_id, true)),
+                l if l.eq(&wire.label0) && !bit => Ok((wire_id, false)),
+                l if l.eq(&wire.label1) && bit => Ok((wire_id, true)),
+                l if l.eq(&wire.label0) || l.eq(&wire.label1) => panic!(
+                    "logic mismatch: label {l:?} does not match bit {bit} for wire_id {wire_id}",
+                ),
                 _l => panic!("logic is broken, at wire_id {wire_id}"),
             };
             if let Ok((id, val)) = &result {

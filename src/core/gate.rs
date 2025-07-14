@@ -1,5 +1,5 @@
 pub use crate::GateType;
-use crate::{Delta, GarbledWire, GarbledWires, WireError, WireId, S};
+use crate::{Delta, GarbledWire, GarbledWires, S, WireError, WireId};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, thiserror::Error)]
@@ -212,7 +212,13 @@ impl Gate {
     }
 
     pub fn garble(&self, wires: &mut GarbledWires, delta: &Delta) -> Result<Vec<S>, Error> {
-        log::debug!("gate_garble: {:?} {}+{}->{}", self.gate_type, self.wire_a, self.wire_b, self.wire_c);
+        log::debug!(
+            "gate_garble: {:?} {}+{}->{}",
+            self.gate_type,
+            self.wire_a,
+            self.wire_b,
+            self.wire_c
+        );
         match self.gate_type {
             GateType::Xor => {
                 let a = self.wire_a(wires, delta)?.select(false);
@@ -248,7 +254,7 @@ impl Gate {
                     .clone();
                 let a = self.wire_a(wires, delta)?.clone();
                 let b = self.wire_b(wires, delta)?;
-                
+
                 let table = [(false, false), (false, true), (true, false), (true, true)]
                     .iter()
                     .enumerate()
@@ -270,40 +276,62 @@ impl Gate {
 
     pub fn evaluate(
         &self,
-        a: S,
-        b: S,
+        a: (S, bool),
+        b: (S, bool),
+        c_labels: (S, S),
         delta: &Delta,
         table: &[Vec<S>],
         table_gate_index: &mut usize,
-    ) -> S {
+    ) -> (S, bool) {
         log::debug!("gate_eval: {:?} a={:?} b={:?}", self.gate_type, a, b);
-        
+
         match self.gate_type {
             GateType::Xor => {
-                let res = a ^ &b;
-                log::debug!("gate_eval: XOR result={res:?}");
-                res
-            },
+                let res_bit = a.1 ^ b.1;
+                let res_label = if res_bit { c_labels.1 } else { c_labels.0 };
+                log::debug!("gate_eval: XOR result={res_label:?} bit={res_bit}");
+                (res_label, res_bit)
+            }
             GateType::Xnor => {
-                let res = (a ^ &b) ^ delta;
-                log::debug!("gate_eval: XNOR result={res:?}");
-                res
-            },
+                let res_bit = !(a.1 ^ b.1);
+                let res_label = if res_bit { c_labels.1 } else { c_labels.0 };
+                log::debug!("gate_eval: XNOR result={res_label:?} bit={res_bit}");
+                (res_label, res_bit)
+            }
             GateType::Not => {
-                let res = a ^ delta;
-                log::debug!("gate_eval: NOT result={res:?}");
-                res
-            },
+                let res_bit = !a.1;
+                let res_label = if res_bit { c_labels.1 } else { c_labels.0 };
+                log::debug!("gate_eval: NOT result={res_label:?} bit={res_bit}");
+                (res_label, res_bit)
+            }
             _gt => {
-                let i = a.0[31] & 1;
-                let j = b.0[31] & 1;
-                let idx = ((i << 1) | j) as usize;
+                let i = a.1;
+                let j = b.1;
+                let idx = ((i as usize) << 1) | (j as usize);
                 let ct = &table[*table_gate_index][idx];
-                log::debug!("gate_eval: table lookup i={} j={} idx={} table_gate_idx={}", i, j, idx, *table_gate_index);
+                log::debug!(
+                    "gate_eval: table lookup i={} j={} idx={} table_gate_idx={}",
+                    i,
+                    j,
+                    idx,
+                    *table_gate_index
+                );
                 *table_gate_index += 1;
-                let res = ct.neg() + S::hash_together(a, b);
-                log::debug!("gate_eval: table result ct={:?} hash={:?} final={:?}", ct, S::hash_together(a, b), res);
-                res
+                let res_label = ct.neg() + S::hash_together(a.0, b.0);
+                let res_bit = (self.gate_type.f())(i, j);
+                log::debug!(
+                    "gate_eval: table result ct={:?} hash={:?} final={:?} bit={}",
+                    ct,
+                    S::hash_together(a.0, b.0),
+                    res_label,
+                    res_bit
+                );
+                let (label0, label1) = c_labels;
+                debug_assert!(
+                    res_label.eq(&label0) || res_label.eq(&label1),
+                    "evaluated label does not match any known output label"
+                );
+                (res_label, res_bit)
             }
         }
     }
