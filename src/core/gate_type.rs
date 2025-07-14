@@ -1,5 +1,5 @@
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GateType {
     And = 0,
     Nand = 1,
@@ -33,6 +33,27 @@ impl GateType {
             GateType::Xnor => |a, b| !(a ^ b),
 
             GateType::Not => |a, _| !a,
+        }
+    }
+
+    pub fn is_free(&self) -> bool {
+        matches!(self, Self::Xor | Self::Xnor | Self::Not)
+    }
+
+    pub fn is_output_wire_is_marked_not(&self) -> bool {
+        match self {
+            GateType::Not => true,
+            GateType::Xnor => true,
+
+            GateType::Nand => false,
+            GateType::Nor => false,
+            GateType::And => false,
+            GateType::Cimp => false,
+            GateType::Imp => false,
+            GateType::Ncimp => false,
+            GateType::Nimp => false,
+            GateType::Or => false,
+            GateType::Xor => false,
         }
     }
 }

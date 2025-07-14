@@ -37,7 +37,7 @@ pub fn add_constant_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint)
             bits.push(a.bits[i]);
         } else if i == first_one {
             let wire = circuit.issue_wire();
-            circuit.add_gate(Gate::not(a.bits[i], wire));
+            circuit.add_gate(Gate::nand(a.bits[i], a.bits[i], wire));
             bits.push(wire);
             carry = Some(a.bits[i]);
         } else if b_bits[i] {
@@ -91,10 +91,8 @@ pub fn sub_generic_without_borrow(
 }
 
 pub fn double(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
-    let not_a = circuit.issue_wire();
     let zero_wire = circuit.issue_wire();
-    circuit.add_gate(Gate::not(a.bits[0], not_a));
-    circuit.add_gate(Gate::and(a.bits[0], not_a, zero_wire));
+    circuit.add_gate(Gate::nimp(a.bits[0], a.bits[0], zero_wire));
 
     BigIntWires {
         bits: iter::once(zero_wire)
@@ -115,10 +113,8 @@ pub fn double(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
 //        circuit
 //    }
 pub fn double_without_overflow(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
-    let not_a = circuit.issue_wire();
     let zero_wire = circuit.issue_wire();
-    circuit.add_gate(Gate::not(a.bits[0], not_a));
-    circuit.add_gate(Gate::and(a.bits[0], not_a, zero_wire));
+    circuit.add_gate(Gate::nimp(a.bits[0], a.bits[0], zero_wire));
 
     BigIntWires {
         bits: iter::once(zero_wire)
@@ -128,10 +124,8 @@ pub fn double_without_overflow(circuit: &mut Circuit, a: &BigIntWires) -> BigInt
 }
 
 pub fn half(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
-    let not_a = circuit.issue_wire();
     let zero_wire = circuit.issue_wire();
-    circuit.add_gate(Gate::not(a.bits[0], not_a));
-    circuit.add_gate(Gate::and(a.bits[0], not_a, zero_wire));
+    circuit.add_gate(Gate::nimp(a.bits[0], a.bits[0], zero_wire));
 
     BigIntWires {
         bits: a
@@ -178,6 +172,8 @@ pub fn half(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
 
 #[cfg(test)]
 mod tests {
+    use test_log::test;
+
     use super::*;
 
     fn test_two_input_operation(
@@ -207,10 +203,12 @@ mod tests {
 
         let (actual, expected): (Vec<_>, Vec<_>) = circuit
             .garble()
-            .unwrap()
+            .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
             .evaluate(|id| a_input(id).or_else(|| b_input(id)))
-            .unwrap()
-            .map(|r| r.unwrap())
+            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
+            .check_correctness()
+            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
+            .iter_output()
             .map(|(wire_id, actual)| (actual, (result_output)(wire_id).unwrap()))
             .unzip();
 
@@ -243,8 +241,10 @@ mod tests {
             .garble()
             .unwrap()
             .evaluate(a_input)
-            .unwrap()
-            .map(|r| r.unwrap())
+            .expect("EvaluationProblem")
+            .check_correctness()
+            .expect("CorrectnessProblem")
+            .iter_output()
             .map(|(wire_id, actual)| (actual, (result_output)(wire_id).unwrap()))
             .unzip();
 

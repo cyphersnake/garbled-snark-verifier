@@ -7,7 +7,7 @@ use std::{
 use blake3::hash;
 use rand::{rng, Rng};
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct S(pub [u8; 32]);
 
 impl S {

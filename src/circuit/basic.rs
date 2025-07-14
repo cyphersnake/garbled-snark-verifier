@@ -51,9 +51,9 @@ impl Circuit {
     pub fn selector(&mut self, a: WireId, b: WireId, c: WireId) -> WireId {
         let [d, f, g] = array::from_fn(|_| self.issue_wire());
 
-        self.add_gate(Gate::new(GateType::Nand, a, c, d));
+        self.add_gate(Gate::nand(a, c, d));
         self.add_gate(Gate::and_variant(c, b, f, [true, false, true]));
-        self.add_gate(Gate::new(GateType::Nand, d, f, g));
+        self.add_gate(Gate::nand(d, f, g));
 
         g
     }
@@ -83,7 +83,72 @@ impl Circuit {
 mod tests {
     use std::collections::HashMap;
 
+    use test_log::test;
+
     use super::*;
+
+    #[test]
+    fn not_not() {
+        let mut circuit = Circuit::default();
+
+        let wire = circuit.issue_input_wire();
+        circuit.make_wire_output(wire);
+
+        circuit.add_gate(Gate::not(wire));
+        circuit.add_gate(Gate::not(wire));
+
+        circuit
+            .garble()
+            .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
+            .evaluate(|_id| Some(true))
+            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
+            .check_correctness()
+            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
+            .iter_output()
+            .for_each(|(_wire_id, res)| assert!(res));
+
+        circuit.add_gate(Gate::not(wire));
+
+        circuit
+            .garble()
+            .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
+            .evaluate(|_id| Some(true))
+            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
+            .check_correctness()
+            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
+            .iter_output()
+            .for_each(|(_wire_id, res)| assert!(!res));
+    }
+
+    #[test]
+    fn xnor_connection_test() {
+        let mut circuit = Circuit::default();
+
+        let a_wire = circuit.issue_input_wire();
+        let b_wire = circuit.issue_input_wire();
+
+        let res = circuit.issue_wire();
+
+        circuit.add_gate(Gate::not(a_wire));
+        circuit.add_gate(Gate::not(a_wire));
+
+        circuit.add_gate(Gate::not(b_wire));
+        circuit.add_gate(Gate::not(b_wire));
+
+        circuit.add_gate(Gate::and(a_wire, b_wire, res));
+
+        circuit.make_wire_output(res);
+
+        circuit
+            .garble()
+            .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
+            .evaluate(|_id| Some(true))
+            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
+            .check_correctness()
+            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
+            .iter_output()
+            .for_each(|(_wire_id, res)| assert!(res));
+    }
 
     #[test]
     fn test_half_adder() {
@@ -117,8 +182,8 @@ mod tests {
                     }
                 })
                 .unwrap()
-                .for_each(|res| {
-                    let (wire_id, value) = res.unwrap();
+                .iter_output()
+                .for_each(|(wire_id, value)| {
                     if wire_id == result_wire {
                         assert_eq!(value, c);
                     } else if wire_id == carry_wire {
@@ -162,8 +227,8 @@ mod tests {
                 .unwrap()
                 .evaluate(|id| input.get(&id).copied())
                 .unwrap()
-                .for_each(|res| {
-                    let (wire_id, value) = res.unwrap();
+                .iter_output()
+                .for_each(|(wire_id, value)| {
                     if wire_id == result_wire {
                         assert_eq!(value, d);
                     } else if wire_id == carry_wire {
@@ -199,8 +264,8 @@ mod tests {
                 .unwrap()
                 .evaluate(|id| id.eq(&a_wire).then_some(a).or(id.eq(&b_wire).then_some(b)))
                 .unwrap()
-                .for_each(|res| {
-                    let (wire_id, value) = res.unwrap();
+                .iter_output()
+                .for_each(|(wire_id, value)| {
                     if wire_id == result_wire {
                         assert_eq!(value, c);
                     } else if wire_id == borrow_wire {
@@ -244,8 +309,8 @@ mod tests {
                 .unwrap()
                 .evaluate(|id| input.get(&id).copied())
                 .unwrap()
-                .for_each(|res| {
-                    let (wire_id, value) = res.unwrap();
+                .iter_output()
+                .for_each(|(wire_id, value)| {
                     if wire_id == result_wire {
                         assert_eq!(value, d);
                     } else if wire_id == carry_wire {
@@ -283,13 +348,14 @@ mod tests {
             let input = [(a_wire, a), (b_wire, b), (c_wire, c)]
                 .into_iter()
                 .collect::<HashMap<WireId, bool>>();
+
             circuit
                 .garble()
                 .unwrap()
                 .evaluate(|id| input.get(&id).copied())
                 .unwrap()
-                .for_each(|res| {
-                    let (wire_id, value) = res.unwrap();
+                .iter_output()
+                .for_each(|(wire_id, value)| {
                     if wire_id == result_wire {
                         assert_eq!(value, d);
                     } else {
@@ -336,8 +402,8 @@ mod tests {
             .unwrap()
             .evaluate(|id| input.get(&id).copied())
             .unwrap()
-            .for_each(|res| {
-                let (wire_id, value) = res.unwrap();
+            .iter_output()
+            .for_each(|(wire_id, value)| {
                 if wire_id == result_wire {
                     assert_eq!(value, a_values[u]);
                 } else {

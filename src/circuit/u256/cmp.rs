@@ -69,7 +69,7 @@ pub fn equal_constant(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint) -> Wi
 pub fn equal_zero(circuit: &mut Circuit, a: &BigIntWires) -> WireId {
     if a.len() == 1 {
         let is_bit_zero = circuit.issue_wire();
-        circuit.add_gate(Gate::not(a.bits[0], is_bit_zero));
+        circuit.add_gate(Gate::not(a.bits[0]));
         return is_bit_zero;
     }
 
@@ -89,9 +89,8 @@ pub fn greater_than(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> 
         bits: b
             .iter()
             .map(|b_i| {
-                let not_b_i = circuit.issue_wire();
-                circuit.add_gate(Gate::not(*b_i, not_b_i));
-                not_b_i
+                circuit.add_gate(Gate::not(*b_i));
+                *b_i
             })
             .collect(),
     };
@@ -105,9 +104,8 @@ pub fn less_than_constant(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint) -
         bits: a
             .iter()
             .map(|a_i| {
-                let not_a_i = circuit.issue_wire();
-                circuit.add_gate(Gate::not(*a_i, not_a_i));
-                not_a_i
+                circuit.add_gate(Gate::not(*a_i));
+                *a_i
             })
             .collect(),
     };
@@ -154,8 +152,10 @@ pub fn multiplexer(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use log::debug;
     use test_log::test;
+
+    use super::*;
 
     fn test_comparison_operation(
         n_bits: usize,
@@ -182,8 +182,10 @@ mod tests {
             .unwrap()
             .evaluate(|id| a_input(id).or_else(|| b_input(id)))
             .unwrap()
-            .find(|r| r.as_ref().unwrap().0 == result)
+            .check_correctness()
             .unwrap()
+            .iter_output()
+            .find(|r| r.0 == result)
             .unwrap()
             .1;
 
@@ -212,8 +214,10 @@ mod tests {
             .unwrap()
             .evaluate(a_input)
             .unwrap()
-            .find(|r| r.as_ref().unwrap().0 == result)
+            .check_correctness()
             .unwrap()
+            .iter_output()
+            .find(|r| r.0 == result)
             .unwrap()
             .1;
 
@@ -223,22 +227,22 @@ mod tests {
     fn test_select_operation(n_bits: usize, a_val: u64, b_val: u64, selector: bool, expected: u64) {
         let mut circuit = Circuit::default();
 
-        let a = BigIntWires::new(&mut circuit, n_bits, true, false);
-        let b = BigIntWires::new(&mut circuit, n_bits, true, false);
+        let a_wire = BigIntWires::new(&mut circuit, n_bits, true, false);
+        let b_wire = BigIntWires::new(&mut circuit, n_bits, true, false);
+        let s_wire = circuit.issue_input_wire();
 
-        let s = circuit.issue_wire();
+        debug!("select: if {s_wire:?} then {a_wire:?} else {b_wire:?}");
+        let result_wire = select(&mut circuit, &a_wire, &b_wire, s_wire);
 
         let a_big = BigUint::from(a_val);
         let b_big = BigUint::from(b_val);
         let expected_bn = BigUint::from(expected);
 
-        let result = select(&mut circuit, &a, &b, s);
+        let a_input = a_wire.get_wire_bits_fn(&a_big).unwrap();
+        let b_input = b_wire.get_wire_bits_fn(&b_big).unwrap();
+        let result_output = result_wire.get_wire_bits_fn(&expected_bn).unwrap();
 
-        let a_input = a.get_wire_bits_fn(&a_big).unwrap();
-        let b_input = b.get_wire_bits_fn(&b_big).unwrap();
-        let result_output = result.get_wire_bits_fn(&expected_bn).unwrap();
-
-        result.bits.iter().for_each(|bit| {
+        result_wire.bits.iter().for_each(|bit| {
             circuit.make_wire_output(*bit);
         });
 
@@ -246,15 +250,17 @@ mod tests {
             .garble()
             .unwrap()
             .evaluate(|id| {
-                if id == s {
-                    Some(selector)
-                } else {
-                    a_input(id).or_else(|| b_input(id))
+                if id == s_wire {
+                    return Some(selector);
                 }
+
+                a_input(id).or_else(|| b_input(id))
             })
-            .unwrap()
-            .map(|r| r.unwrap())
-            .filter(|(wire_id, _)| result.bits.contains(wire_id))
+            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
+            .check_correctness()
+            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
+            .iter_output()
+            .filter(|(wire_id, _)| result_wire.bits.contains(wire_id))
             .map(|(wire_id, actual)| (actual, result_output(wire_id).unwrap()))
             .unzip();
 
@@ -312,9 +318,11 @@ mod tests {
             .garble()
             .unwrap()
             .evaluate(|id| a_input(id).or_else(|| b_input(id)))
-            .unwrap()
-            .find(|r| r.as_ref().unwrap().0 == result)
-            .unwrap()
+            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
+            .check_correctness()
+            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
+            .iter_output()
+            .find(|r| r.0 == result)
             .unwrap()
             .1;
 

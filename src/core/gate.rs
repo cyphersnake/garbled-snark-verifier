@@ -1,5 +1,7 @@
+use log::debug;
+
 pub use crate::GateType;
-use crate::{Delta, GarbledWire, GarbledWires, WireError, WireId, S};
+use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, thiserror::Error)]
@@ -133,11 +135,11 @@ impl Gate {
     }
 
     #[must_use]
-    pub fn not(wire_a: WireId, wire_c: WireId) -> Self {
+    pub fn not(wire_a: WireId) -> Self {
         Self {
             wire_a,
             wire_b: wire_a,
-            wire_c,
+            wire_c: wire_a,
             gate_type: GateType::Not,
         }
     }
@@ -184,6 +186,10 @@ impl Gate {
         )
     }
 
+    pub fn is_free(&self) -> bool {
+        self.gate_type.is_free()
+    }
+
     fn wire_a<'w>(
         &self,
         wires: &'w mut GarbledWires,
@@ -212,32 +218,64 @@ impl Gate {
     }
 
     pub fn garble(&self, wires: &mut GarbledWires, delta: &Delta) -> Result<Vec<S>, Error> {
-        log::debug!("gate_garble: {:?} {}+{}->{}", self.gate_type, self.wire_a, self.wire_b, self.wire_c);
+        debug!(
+            "gate_garble: {:?} {}+{}->{}",
+            self.gate_type, self.wire_a, self.wire_b, self.wire_c
+        );
         match self.gate_type {
             GateType::Xor => {
-                let a = self.wire_a(wires, delta)?.select(false);
-                let b = self.wire_b(wires, delta)?.select(false);
-                let c0 = a ^ &b;
-                let c1 = c0 ^ delta;
-                log::debug!("gate_garble: XOR c0={c0:?} c1={c1:?}");
-                self.init_wire_c(wires, c0, c1)?;
+                let a_label0 = self.wire_a(wires, delta)?.select(false);
+                let b_label0 = self.wire_b(wires, delta)?.select(false);
+
+                let c_label0 = a_label0 ^ &b_label0;
+                let c_label1 = c_label0 ^ delta;
+
+                #[cfg(test)]
+                {
+                    let a = self.wire_a(wires, delta)?.clone();
+                    let b = self.wire_b(wires, delta)?;
+                    debug!("gate_garble: {a:#?} XOR {b:#?} = c0={c_label0:?} c1={c_label1:?}");
+                }
+
+                self.init_wire_c(wires, c_label0, c_label1)?;
+
                 Ok(vec![])
             }
             GateType::Xnor => {
-                let a = self.wire_a(wires, delta)?.select(false);
-                let b = self.wire_b(wires, delta)?.select(false);
-                let c1 = a ^ &b;
-                let c0 = c1 ^ delta;
-                log::debug!("gate_garble: XNOR c0={c0:?} c1={c1:?}");
-                self.init_wire_c(wires, c0, c1)?;
+                let a_label0 = self.wire_a(wires, delta)?.select(false);
+                let b_label0 = self.wire_b(wires, delta)?.select(false);
+
+                let c_label0 = a_label0 ^ &b_label0 ^ delta;
+                let c_label1 = c_label0 ^ delta;
+
+                #[cfg(test)]
+                {
+                    let a = self.wire_a(wires, delta)?.clone();
+                    let b = self.wire_b(wires, delta)?;
+                    debug!("gate_garble: {a:#?} XNOR {b:#?} = c0={c_label0:?} c1={c_label1:?}");
+                }
+
+                // XNOR is handled without `Wire` inversion, but with actual label switching
+                self.init_wire_c(wires, c_label0, c_label1)?;
+
                 Ok(vec![])
             }
             GateType::Not => {
-                let a = self.wire_a(wires, delta)?;
-                let c0 = a.select(true);
-                let c1 = a.select(false);
-                log::debug!("gate_garble: NOT c0={c0:?} c1={c1:?}");
-                self.init_wire_c(wires, c0, c1)?;
+                assert_eq!(self.wire_a, self.wire_b);
+                assert_eq!(self.wire_b, self.wire_c);
+
+                #[cfg(test)]
+                {
+                    let a = self.wire_a(wires, delta)?.clone();
+                    debug!("gate_garble: {a:#?} NOT");
+                }
+
+                self.wire_a(wires, delta)?;
+
+                wires
+                    .toggle_wire_not_mark(self.wire_c)
+                    .map_err(|err| Error::InitWire { wire: "c", err })?;
+
                 Ok(vec![])
             }
             _gt => {
@@ -246,9 +284,15 @@ impl Gate {
                     .init(self.wire_c, GarbledWire::random(delta))
                     .map_err(|err| Error::GetOrInitWire { wire: "c", err })?
                     .clone();
+
                 let a = self.wire_a(wires, delta)?.clone();
                 let b = self.wire_b(wires, delta)?;
-                
+
+                #[cfg(test)]
+                {
+                    debug!("gate_garble: {a:#?} {:?} {b:#?}", self.gate_type);
+                }
+
                 let table = [(false, false), (false, true), (true, false), (true, true)]
                     .iter()
                     .enumerate()
@@ -257,54 +301,150 @@ impl Gate {
                         let a_label = a.select(*i);
                         let b_label = b.select(*j);
                         let c_label = c.select(k);
-                        let res = c_label.neg() + S::hash_together(a_label, b_label);
-                        log::debug!("gate_garble: table[{idx}] i={i} j={j} k={k} res={res:?}");
-                        res
+                        let ab_hash = S::hash_together(a_label, b_label);
+                        let table_value = c_label.neg() + ab_hash;
+
+                        debug!(
+                            "gate_garble[{idx}]: {a_label:?} {:?} {b_label:?} = {c_label:?} ({ab_hash:?} -> {table_value:?})",
+                            self.gate_type
+                        );
+
+                        table_value
                     })
                     .collect();
-                log::debug!("gate_garble: generated table with {} entries", 4);
+
+                debug!("gate_garble: generated table with {} entries", 4);
                 Ok(table)
             }
         }
     }
 
-    pub fn evaluate(
-        &self,
-        a: S,
-        b: S,
-        delta: &Delta,
+    pub fn evaluate(&self, a: &EvaluatedWire, b: &EvaluatedWire, c: &GarbledWire) -> EvaluatedWire {
+        let evaluated_value = (self.gate_type.f())(a.value, b.value);
+
+        EvaluatedWire {
+            active_label: c.select(evaluated_value),
+            value: evaluated_value,
+        }
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum CorrectnessError {
+    #[error("TODO")]
+    Value { calculated: bool, actual: bool },
+    #[error("TODO")]
+    XorLabel { calculated: S, actual: S },
+    #[error("TODO")]
+    XnorLabel { calculated: S, actual: S },
+
+    #[error("TODO")]
+    NotLabel {
+        a: EvaluatedWire,
+        b: EvaluatedWire,
+        c: EvaluatedWire,
+    },
+
+    #[error("TODO")]
+    TableMismatch {
+        table_row: Vec<S>,
+        a: EvaluatedWire,
+        b: EvaluatedWire,
+        c: EvaluatedWire,
+        table_index: usize,
+        ab_hash: S,
+        evaluated_c_label: S,
+    },
+}
+
+impl Gate {
+    pub fn check_correctness<'s, 'w>(
+        &'s self,
+        get_evaluated: impl Fn(WireId) -> Option<&'w EvaluatedWire>,
         table: &[Vec<S>],
         table_gate_index: &mut usize,
-    ) -> S {
+    ) -> Result<(), Vec<CorrectnessError>> {
+        let a = get_evaluated(self.wire_a).unwrap();
+        let b = get_evaluated(self.wire_b).unwrap();
+        let c = get_evaluated(self.wire_c).unwrap();
+
+        let mut errors = vec![];
         log::debug!("gate_eval: {:?} a={:?} b={:?}", self.gate_type, a, b);
-        
+
+        // We can't check `EvaluatedWire` for Not Gate,
+        // because it is closed to itself (a == b == c)
+        if GateType::Not != self.gate_type {
+            let expected_c_value = (self.gate_type.f())(a.value, b.value);
+
+            if expected_c_value != c.value {
+                errors.push(CorrectnessError::Value {
+                    calculated: expected_c_value,
+                    actual: c.value,
+                })
+            }
+        }
+
         match self.gate_type {
             GateType::Xor => {
-                let res = a ^ &b;
+                let res = a.active_label ^ &b.active_label;
+
                 log::debug!("gate_eval: XOR result={res:?}");
-                res
-            },
-            GateType::Xnor => {
-                let res = (a ^ &b) ^ delta;
-                log::debug!("gate_eval: XNOR result={res:?}");
-                res
-            },
-            GateType::Not => {
-                let res = a ^ delta;
-                log::debug!("gate_eval: NOT result={res:?}");
-                res
-            },
-            _gt => {
-                let i = a.0[31] & 1;
-                let j = b.0[31] & 1;
-                let idx = ((i << 1) | j) as usize;
-                let ct = &table[*table_gate_index][idx];
-                log::debug!("gate_eval: table lookup i={} j={} idx={} table_gate_idx={}", i, j, idx, *table_gate_index);
-                *table_gate_index += 1;
-                let res = ct.neg() + S::hash_together(a, b);
-                log::debug!("gate_eval: table result ct={:?} hash={:?} final={:?}", ct, S::hash_together(a, b), res);
-                res
+
+                if res != c.active_label {
+                    errors.push(CorrectnessError::XorLabel {
+                        calculated: res,
+                        actual: c.active_label,
+                    })
+                }
             }
+            GateType::Xnor => {
+                let calculated_label = a.active_label ^ &b.active_label;
+
+                if calculated_label != c.active_label {
+                    errors.push(CorrectnessError::XnorLabel {
+                        calculated: calculated_label,
+                        actual: c.active_label,
+                    })
+                }
+            }
+            GateType::Not => {
+                if a != b || b != c {
+                    errors.push(CorrectnessError::NotLabel {
+                        a: a.clone(),
+                        b: b.clone(),
+                        c: c.clone(),
+                    })
+                }
+            }
+            _gt => {
+                let i = a.value() as usize;
+                let j = b.value() as usize;
+                let table_index = (i << 1) | j;
+
+                let table_value = &table[*table_gate_index][table_index];
+                *table_gate_index += 1;
+                let ab_hash = S::hash_together(a.active_label, b.active_label);
+
+                let c_label = table_value.neg() + ab_hash;
+
+                if c_label != c.active_label {
+                    errors.push(CorrectnessError::TableMismatch {
+                        table_row: table[*table_gate_index - 1].clone(),
+                        table_index,
+                        a: a.clone(),
+                        b: b.clone(),
+                        c: c.clone(),
+                        ab_hash,
+                        evaluated_c_label: c_label,
+                    })
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::{fmt, ops::Deref};
+use std::{fmt, mem, ops::Deref};
 
 use crate::{Delta, S};
 
@@ -43,9 +43,12 @@ impl GarbledWire {
         GarbledWire { label0, label1 }
     }
 
+    pub fn toggle_not(&mut self) {
+        mem::swap(&mut self.label1, &mut self.label0);
+    }
+
     pub fn random(delta: &Delta) -> Self {
-        let mut label0 = S::random();
-        label0.0[31] &= 0xFE; // LSB = 0
+        let label0 = S::random();
 
         GarbledWire {
             label0,
@@ -58,12 +61,6 @@ impl GarbledWire {
         match bit {
             false => self.label0,
             true => self.label1,
-        }
-    }
-
-    pub fn evaluate(&self, bit: bool) -> EvaluatedWire {
-        EvaluatedWire {
-            active_label: self.select(bit),
         }
     }
 }
@@ -119,6 +116,18 @@ mod garbled_wires {
             self.get(wire_id)
         }
 
+        pub fn toggle_wire_not_mark(&mut self, wire_id: WireId) -> Result<(), WireError> {
+            if wire_id.0 >= self.initialized.len() || !self.initialized[wire_id.0] {
+                return Err(WireError::InvalidWireIndex(wire_id));
+            }
+
+            unsafe {
+                self.wires[wire_id.0].assume_init_mut().toggle_not();
+            }
+
+            Ok(())
+        }
+
         pub fn get_or_init<F>(
             &mut self,
             wire_id: WireId,
@@ -149,7 +158,30 @@ mod garbled_wires {
 }
 pub use garbled_wires::GarbledWires;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EvaluatedWire {
     pub active_label: S,
+    pub value: bool,
+}
+
+impl Default for EvaluatedWire {
+    fn default() -> Self {
+        Self {
+            active_label: S([0u8; 32]),
+            value: Default::default(),
+        }
+    }
+}
+
+impl EvaluatedWire {
+    pub fn new_from_garbled(garbled_wire: GarbledWire, value: bool) -> Self {
+        Self {
+            active_label: garbled_wire.select(value),
+            value,
+        }
+    }
+
+    pub fn value(&self) -> bool {
+        self.value
+    }
 }
