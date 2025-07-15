@@ -1,7 +1,7 @@
 use num_bigint::BigUint;
 
 use super::BigIntWires;
-use crate::{circuit::u256::bits_from_biguint_with_len, Circuit, Gate, WireId};
+use crate::{Circuit, Gate, WireId, circuit::u256::bits_from_biguint_with_len};
 
 pub fn self_or_zero_generic(circuit: &mut Circuit, a: &[WireId], s: WireId) -> Vec<WireId> {
     a.iter()
@@ -177,19 +177,16 @@ mod tests {
         let a_input = a.get_wire_bits_fn(&a_big).unwrap();
         let b_input = b.get_wire_bits_fn(&b_big).unwrap();
 
-        let output = circuit
-            .garble()
-            .unwrap()
-            .evaluate(|id| a_input(id).or_else(|| b_input(id)))
-            .unwrap()
-            .check_correctness()
-            .unwrap()
-            .iter_output()
-            .find(|r| r.0 == result)
-            .unwrap()
-            .1;
-
-        assert_eq!(output, expected);
+        circuit.full_cycle_test(
+            |id| a_input(id).or_else(|| b_input(id)),
+            |wire_id| {
+                if wire_id == result {
+                    Some(expected)
+                } else {
+                    None
+                }
+            },
+        );
     }
 
     fn test_constant_comparison_operation(
@@ -209,19 +206,13 @@ mod tests {
         let a_big = BigUint::from(a_val);
         let a_input = a.get_wire_bits_fn(&a_big).unwrap();
 
-        let output = circuit
-            .garble()
-            .unwrap()
-            .evaluate(a_input)
-            .unwrap()
-            .check_correctness()
-            .unwrap()
-            .iter_output()
-            .find(|r| r.0 == result)
-            .unwrap()
-            .1;
-
-        assert_eq!(output, expected);
+        circuit.full_cycle_test(a_input, |wire_id| {
+            if wire_id == result {
+                Some(expected)
+            } else {
+                None
+            }
+        });
     }
 
     fn test_select_operation(n_bits: usize, a_val: u64, b_val: u64, selector: bool, expected: u64) {
@@ -246,25 +237,21 @@ mod tests {
             circuit.make_wire_output(*bit);
         });
 
-        let (actual, expected): (Vec<_>, Vec<_>) = circuit
-            .garble()
-            .unwrap()
-            .evaluate(|id| {
+        circuit.full_cycle_test(
+            |id| {
                 if id == s_wire {
                     return Some(selector);
                 }
-
                 a_input(id).or_else(|| b_input(id))
-            })
-            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
-            .check_correctness()
-            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
-            .iter_output()
-            .filter(|(wire_id, _)| result_wire.bits.contains(wire_id))
-            .map(|(wire_id, actual)| (actual, result_output(wire_id).unwrap()))
-            .unzip();
-
-        assert_eq!(actual, expected);
+            },
+            |wire_id| {
+                if result_wire.bits.contains(&wire_id) {
+                    result_output(wire_id)
+                } else {
+                    None
+                }
+            },
+        );
     }
 
     const NUM_BITS: usize = 4;

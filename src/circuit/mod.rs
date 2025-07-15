@@ -1,8 +1,8 @@
 use std::{iter, ops::Not};
 
 use crate::{
-    core::gate::CorrectnessError, Delta, EvaluatedWire, GarbledWires, Gate, GateError, WireError,
-    WireId, S,
+    Delta, EvaluatedWire, GarbledWires, Gate, GateError, S, WireError, WireId,
+    core::gate::CorrectnessError,
 };
 
 mod basic;
@@ -113,6 +113,22 @@ impl Circuit {
             delta,
             garbled_table,
         })
+    }
+
+    #[cfg(test)]
+    pub fn full_cycle_test(
+        &self,
+        get_input: impl Fn(WireId) -> Option<bool>,
+        get_expected_output: impl Fn(WireId) -> Option<bool>,
+    ) {
+        self.garble()
+            .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
+            .evaluate(get_input)
+            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
+            .check_correctness()
+            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
+            .iter_output()
+            .for_each(|(wire_id, res)| assert!(get_expected_output(wire_id) == Some(res)));
     }
 }
 

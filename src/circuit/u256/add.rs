@@ -201,18 +201,10 @@ mod tests {
         let b_input = b.get_wire_bits_fn(&b_big).unwrap();
         let result_output = result.get_wire_bits_fn(&expected_big).unwrap();
 
-        let (actual, expected): (Vec<_>, Vec<_>) = circuit
-            .garble()
-            .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
-            .evaluate(|id| a_input(id).or_else(|| b_input(id)))
-            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
-            .check_correctness()
-            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
-            .iter_output()
-            .map(|(wire_id, actual)| (actual, (result_output)(wire_id).unwrap()))
-            .unzip();
-
-        assert_eq!(actual, expected);
+        circuit.full_cycle_test(
+            |id| a_input(id).or_else(|| b_input(id)),
+            |wire_id| result_output(wire_id),
+        );
     }
 
     fn test_constant_operation(
@@ -237,18 +229,7 @@ mod tests {
         let expected_big = BigUint::from(expected);
         let result_output = result.get_wire_bits_fn(&expected_big).unwrap();
 
-        let (actual, expected): (Vec<_>, Vec<_>) = circuit
-            .garble()
-            .unwrap()
-            .evaluate(a_input)
-            .expect("EvaluationProblem")
-            .check_correctness()
-            .expect("CorrectnessProblem")
-            .iter_output()
-            .map(|(wire_id, actual)| (actual, (result_output)(wire_id).unwrap()))
-            .unzip();
-
-        assert_eq!(actual, expected);
+        circuit.full_cycle_test(a_input, |wire_id| result_output(wire_id));
     }
 
     const NUM_BITS: usize = 4;

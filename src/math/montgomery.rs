@@ -58,7 +58,7 @@ mod tests {
         let a = BigInt::from(48);
         let b = BigInt::from(18);
         let (gcd, x, y) = extended_gcd(&a, &b);
-        
+
         assert_eq!(gcd, BigInt::from(6));
         assert_eq!(a.clone() * x + b.clone() * y, gcd);
     }

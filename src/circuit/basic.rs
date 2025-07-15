@@ -97,27 +97,11 @@ mod tests {
         circuit.add_gate(Gate::not(wire));
         circuit.add_gate(Gate::not(wire));
 
-        circuit
-            .garble()
-            .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
-            .evaluate(|_id| Some(true))
-            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
-            .check_correctness()
-            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
-            .iter_output()
-            .for_each(|(_wire_id, res)| assert!(res));
+        circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(true));
 
         circuit.add_gate(Gate::not(wire));
 
-        circuit
-            .garble()
-            .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
-            .evaluate(|_id| Some(true))
-            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
-            .check_correctness()
-            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
-            .iter_output()
-            .for_each(|(_wire_id, res)| assert!(!res));
+        circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(false));
     }
 
     #[test]
@@ -139,15 +123,7 @@ mod tests {
 
         circuit.make_wire_output(res);
 
-        circuit
-            .garble()
-            .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
-            .evaluate(|_id| Some(true))
-            .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
-            .check_correctness()
-            .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
-            .iter_output()
-            .for_each(|(_wire_id, res)| assert!(res));
+        circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(true));
     }
 
     #[test]
