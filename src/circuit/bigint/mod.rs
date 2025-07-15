@@ -10,6 +10,7 @@ use crate::WireId;
 
 mod add;
 mod cmp;
+mod mul;
 pub use add::*;
 
 #[derive(thiserror::Error, Debug)]

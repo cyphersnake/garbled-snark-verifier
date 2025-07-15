@@ -199,11 +199,11 @@ mod tests {
 
         let a_input = a.get_wire_bits_fn(&a_big).unwrap();
         let b_input = b.get_wire_bits_fn(&b_big).unwrap();
-        let result_output = result.get_wire_bits_fn(&expected_big).unwrap();
+        let get_expected_result_fn = result.get_wire_bits_fn(&expected_big).unwrap();
 
         circuit.full_cycle_test(
             |id| a_input(id).or_else(|| b_input(id)),
-            |wire_id| result_output(wire_id),
+            get_expected_result_fn,
         );
     }
 
@@ -227,9 +227,9 @@ mod tests {
         let a_big = BigUint::from(a_val);
         let a_input = a.get_wire_bits_fn(&a_big).unwrap();
         let expected_big = BigUint::from(expected);
-        let result_output = result.get_wire_bits_fn(&expected_big).unwrap();
+        let get_expected_result_fn = result.get_wire_bits_fn(&expected_big).unwrap();
 
-        circuit.full_cycle_test(a_input, |wire_id| result_output(wire_id));
+        circuit.full_cycle_test(a_input, get_expected_result_fn);
     }
 
     const NUM_BITS: usize = 4;
@@ -259,33 +259,30 @@ mod tests {
         test_two_input_operation(NUM_BITS, 1, 1, 2, add_generic);
     }
 
-    // The logic of the function seems to be broken, however, it is repeated from the original
-    // We need to test the original and see if there is a bug there
-    //
-    //#[test]
-    //fn test_add_constant_generic_basic() {
-    //    test_constant_operation(NUM_BITS, 5, 3, 8, add_constant_generic);
-    //}
+    #[test]
+    fn test_add_constant_generic_basic() {
+        test_constant_operation(NUM_BITS, 5, 3, 8, add_constant_generic);
+    }
 
-    //#[test]
-    //fn test_add_constant_generic_with_carry() {
-    //    test_constant_operation(NUM_BITS, 7, 9, 16, add_constant_generic);
-    //}
+    #[test]
+    fn test_add_constant_generic_with_carry() {
+        test_constant_operation(NUM_BITS, 7, 9, 16, add_constant_generic);
+    }
 
-    //#[test]
-    //fn test_add_constant_generic_max_plus_one() {
-    //    test_constant_operation(NUM_BITS, 15, 1, 16, add_constant_generic);
-    //}
+    #[test]
+    fn test_add_constant_generic_max_plus_one() {
+        test_constant_operation(NUM_BITS, 15, 1, 16, add_constant_generic);
+    }
 
-    //#[test]
-    //fn test_add_constant_generic_zero_one() {
-    //    test_constant_operation(NUM_BITS, 0, 1, 1, add_constant_generic);
-    //}
+    #[test]
+    fn test_add_constant_generic_zero_one() {
+        test_constant_operation(NUM_BITS, 0, 1, 1, add_constant_generic);
+    }
 
-    //#[test]
-    //fn test_add_constant_generic_one_one() {
-    //    test_constant_operation(NUM_BITS, 1, 1, 2, add_constant_generic);
-    //}
+    #[test]
+    fn test_add_constant_generic_one_one() {
+        test_constant_operation(NUM_BITS, 1, 1, 2, add_constant_generic);
+    }
 
     #[test]
     fn test_sub_generic_basic() {

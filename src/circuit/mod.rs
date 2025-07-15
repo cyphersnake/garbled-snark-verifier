@@ -1,14 +1,14 @@
 use std::{iter, ops::Not};
 
 use crate::{
-    Delta, EvaluatedWire, GarbledWires, Gate, GateError, S, WireError, WireId,
-    core::gate::CorrectnessError,
+    core::gate::CorrectnessError, Delta, EvaluatedWire, GarbledWires, Gate, GateError, WireError,
+    WireId, S,
 };
 
 mod basic;
-mod u256;
+mod bigint;
 
-pub use u256::BigIntWires;
+pub use bigint::BigIntWires;
 
 /// Errors that can occur during circuit operations
 #[derive(Debug, Clone, thiserror::Error)]
