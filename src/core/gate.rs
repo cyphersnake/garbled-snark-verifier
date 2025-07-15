@@ -1,7 +1,7 @@
 use log::debug;
 
 pub use crate::GateType;
-use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
+use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, S, WireError, WireId};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
@@ -345,7 +345,9 @@ pub enum CorrectnessError {
         c: EvaluatedWire,
     },
 
-    #[error("Garbled table mismatch at row {table_index}: expected {evaluated_c_label:?}, got table entry")]
+    #[error(
+        "Garbled table mismatch at row {table_index}: expected {evaluated_c_label:?}, got table entry"
+    )]
     TableMismatch {
         table_row: Vec<S>,
         a: EvaluatedWire,

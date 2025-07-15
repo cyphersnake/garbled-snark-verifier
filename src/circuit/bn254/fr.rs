@@ -1,8 +1,6 @@
-use crate::{
-    circuit::{bigint::BigIntWires, Circuit},
-    circuits::bn254::fp254impl::Fp254Impl,
-};
 use num_bigint::BigUint;
+
+use crate::circuit::{bigint::BigIntWires, bn254::fp254impl::Fp254Impl, Circuit};
 
 /// BN254 scalar field Fr implementation  
 pub struct Fr;
@@ -23,7 +21,7 @@ impl Fp254Impl for Fr {
     fn one_third_modulus() -> BigUint {
         Self::modulus_as_biguint() / 3u32
     }
-    
+
     fn two_third_modulus() -> BigUint {
         Self::modulus_as_biguint() * 2u32 / 3u32
     }
@@ -44,7 +42,7 @@ mod tests {
     fn test_fr_constants() {
         let modulus = Fr::modulus_as_biguint();
         assert_eq!(modulus.bits(), 254);
-        
+
         // Verify Montgomery constants
         assert!(Fr::validate_montgomery_constants());
     }
@@ -53,9 +51,9 @@ mod tests {
     fn test_fr_modulus_properties() {
         let half = Fr::half_modulus();
         let one_third = Fr::one_third_modulus();
-        
+
         let modulus = Fr::modulus_as_biguint();
-        
+
         // For modulus division, we expect (half * 2) + 1 = modulus for odd modulus
         assert_eq!(half * 2u32 + 1u32, modulus);
         // For thirds, precision may be lost in integer division

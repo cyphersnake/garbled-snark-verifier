@@ -2,10 +2,7 @@ use std::str::FromStr;
 
 use num_bigint::BigUint;
 
-use crate::{
-    circuit::{bigint::BigIntWires, Circuit},
-    circuits::bn254::fp254impl::Fp254Impl,
-};
+use crate::circuit::{bigint::BigIntWires, bn254::fp254impl::Fp254Impl, Circuit};
 
 /// BN254 base field Fq implementation
 pub struct Fq;

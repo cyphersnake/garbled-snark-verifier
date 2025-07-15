@@ -4,7 +4,7 @@ use num_bigint::BigUint;
 use num_traits::Zero;
 
 use crate::{
-    circuit::{bigint::BigIntWires, Circuit},
+    circuit::{Circuit, bigint::BigIntWires},
     math::montgomery::calculate_montgomery_constants,
 };
 

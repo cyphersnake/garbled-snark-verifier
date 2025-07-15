@@ -7,6 +7,7 @@ use crate::{
 
 mod basic;
 pub mod bigint;
+pub mod bn254;
 
 pub use bigint::BigIntWires;
 

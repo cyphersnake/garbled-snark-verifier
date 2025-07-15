@@ -1,7 +1,7 @@
 use num_bigint::BigUint;
 
 use super::BigIntWires;
-use crate::{circuit::bigint::bits_from_biguint_with_len, Circuit, Gate, WireId};
+use crate::{Circuit, Gate, WireId, circuit::bigint::bits_from_biguint_with_len};
 
 pub fn self_or_zero_generic(circuit: &mut Circuit, a: &[WireId], s: WireId) -> Vec<WireId> {
     a.iter()

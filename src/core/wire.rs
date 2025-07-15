@@ -4,7 +4,7 @@ use crate::{Delta, S};
 
 /// Errors that can occur during wire operations
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
-pub enum WireError {
+pub enum Error {
     /// Wire with the given ID was not found
     #[error("Wire with id {0} not found")]
     WireNotFound(WireId),
@@ -15,6 +15,7 @@ pub enum WireError {
     #[error("Invalid wire index: {0}")]
     InvalidWireIndex(WireId),
 }
+pub type WireError = Error;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WireId(pub usize);
@@ -141,7 +142,7 @@ mod garbled_wires {
             if wire_id.0 >= self.max_wire_id {
                 return Err(WireError::InvalidWireIndex(wire_id));
             }
-            
+
             self.ensure_capacity(wire_id.0 + 1)?;
 
             if !self.initialized[wire_id.0] {
