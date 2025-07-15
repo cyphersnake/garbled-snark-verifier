@@ -1,10 +1,10 @@
 use log::debug;
 
 pub use crate::GateType;
-use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, S, WireError, WireId};
+use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
 
 #[allow(clippy::enum_variant_names)]
-#[derive(Clone, Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
     #[error("Error while get wire {wire}: {err:?}")]
     GetWire { wire: &'static str, err: WireError },
@@ -15,7 +15,7 @@ pub enum Error {
 }
 pub type GateError = Error;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Gate {
     pub wire_a: WireId,
     pub wire_b: WireId,
@@ -331,21 +331,21 @@ impl Gate {
 
 #[derive(thiserror::Error, Debug)]
 pub enum CorrectnessError {
-    #[error("TODO")]
+    #[error("Gate verification failed: computed {calculated}, expected {actual}")]
     Value { calculated: bool, actual: bool },
-    #[error("TODO")]
+    #[error("XOR gate label mismatch: computed {calculated:?}, expected {actual:?}")]
     XorLabel { calculated: S, actual: S },
-    #[error("TODO")]
+    #[error("XNOR gate label mismatch: computed {calculated:?}, expected {actual:?}")]
     XnorLabel { calculated: S, actual: S },
 
-    #[error("TODO")]
+    #[error("NOT gate label verification failed: wires A={a:?}, B={b:?}, C={c:?}")]
     NotLabel {
         a: EvaluatedWire,
         b: EvaluatedWire,
         c: EvaluatedWire,
     },
 
-    #[error("TODO")]
+    #[error("Garbled table mismatch at row {table_index}: expected {evaluated_c_label:?}, got table entry")]
     TableMismatch {
         table_row: Vec<S>,
         a: EvaluatedWire,

@@ -6,12 +6,12 @@ use crate::{
 };
 
 mod basic;
-mod bigint;
+pub mod bigint;
 
 pub use bigint::BigIntWires;
 
 /// Errors that can occur during circuit operations
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum CircuitError {
     /// Gate-related error
     #[error("Gate error: {0}")]
@@ -21,7 +21,7 @@ pub enum CircuitError {
     GarblingFailed(String),
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Circuit {
     pub num_wire: usize,
     pub input_wires: Vec<WireId>,
@@ -132,20 +132,17 @@ impl Circuit {
     }
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum Error {
-    #[error("TODO")]
-    InputSizeNotConsistent { expected: usize, actual: usize },
-    #[error("TODO")]
+    #[error("Wire access failed: {0}")]
     WhileGetWire(#[from] WireError),
-    #[error("TODO")]
+    #[error("Circuit input missing: wire {0} value not provided")]
     LostInput(WireId),
-    #[error("TODO")]
+    #[error("Gate evaluation failed: {gate:?} requires unevaluated wire {wire_id}")]
     WrongGateOrder { gate: Gate, wire_id: WireId },
-    #[error("TODO")]
-    OutputWireNotEval(WireId),
 }
 
+#[derive(Debug)]
 pub struct GarbledCircuit {
     pub structure: Circuit,
     pub wires: GarbledWires,
@@ -153,6 +150,7 @@ pub struct GarbledCircuit {
     pub garbled_table: Vec<Vec<S>>,
 }
 
+#[derive(Debug)]
 pub struct EvaluatedCircuit {
     pub structure: Circuit,
     wires: Vec<EvaluatedWire>,
@@ -254,5 +252,151 @@ impl GarbledCircuit {
             structure: self.structure.clone(),
             garbled_table: self.garbled_table.clone(),
         })
+    }
+}
+
+#[cfg(test)]
+mod failure_tests {
+    use std::collections::HashMap;
+
+    use super::{Circuit, Error};
+    use crate::{core::gate::CorrectnessError, CircuitError, Gate, GateError, GateType};
+
+    #[test]
+    fn test_missing_input_failure() {
+        let mut circuit = Circuit::default();
+
+        let a_wire = circuit.issue_input_wire();
+        let b_wire = circuit.issue_input_wire();
+        let out_wire = circuit.issue_wire();
+
+        circuit.add_gate(Gate::new(GateType::And, a_wire, b_wire, out_wire));
+        circuit.make_wire_output(out_wire);
+
+        let garbled = circuit.garble().expect("Garbling should succeed");
+
+        let result = garbled.evaluate(|wire_id| if wire_id == a_wire { Some(true) } else { None });
+
+        match result {
+            Err(Error::LostInput(wire)) => assert_eq!(wire, b_wire),
+            Ok(_) => panic!("Expected LostInput error, got success"),
+            Err(other) => panic!("Expected LostInput error, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_wrong_gate_order_failure() {
+        let mut circuit = Circuit::default();
+
+        let input_a = circuit.issue_input_wire();
+        let input_b = circuit.issue_input_wire();
+        let intermediate_wire = circuit.issue_wire();
+        let output_wire = circuit.issue_wire();
+
+        // Create gates in correct wire ID order but wrong evaluation order
+        // Gate 1: XOR input_a, input_b -> intermediate_wire
+        // Gate 2: AND intermediate_wire, input_a -> output_wire
+        // But we'll add them in reverse order so gate 2 evaluates before gate 1
+        circuit.add_gate(Gate::new(
+            GateType::And,
+            intermediate_wire,
+            input_a,
+            output_wire,
+        ));
+        circuit.add_gate(Gate::new(
+            GateType::Xor,
+            input_a,
+            input_b,
+            intermediate_wire,
+        ));
+        circuit.make_wire_output(output_wire);
+
+        assert_eq!(
+            circuit.garble().err(),
+            Some(CircuitError::Gate(GateError::InitWire {
+                wire: "c",
+                err: crate::WireError::InvalidWireIndex(intermediate_wire)
+            }))
+        );
+    }
+
+    #[test]
+    fn test_garbling_with_invalid_wire_reference() {
+        let mut circuit = Circuit::default();
+
+        let a_wire = circuit.issue_input_wire();
+        let invalid_wire = crate::WireId(999);
+        let out_wire = circuit.issue_wire();
+
+        circuit.add_gate(Gate::new(GateType::And, a_wire, invalid_wire, out_wire));
+        circuit.make_wire_output(out_wire);
+
+        let result = circuit.garble();
+
+        assert!(
+            result.is_err(),
+            "Garbling should fail with invalid wire reference"
+        );
+    }
+
+    #[test]
+    fn test_correctness_check_failure() {
+        let mut circuit = Circuit::default();
+
+        let a_wire = circuit.issue_input_wire();
+        let b_wire = circuit.issue_input_wire();
+        let out_wire = circuit.issue_wire();
+
+        circuit.add_gate(Gate::new(GateType::And, a_wire, b_wire, out_wire));
+        circuit.make_wire_output(out_wire);
+
+        let input_map = [(a_wire, true), (b_wire, false)]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+
+        let mut garbled = circuit.garble().expect("Garbling should succeed");
+
+        // Corrupt the entire first row of the garbled table
+        for entry in &mut garbled.garbled_table[0] {
+            *entry = crate::S::random();
+        }
+
+        let evaluated = garbled
+            .evaluate(|id| input_map.get(&id).copied())
+            .expect("Evaluation should succeed");
+
+        let result = evaluated.check_correctness();
+
+        assert!(
+            matches!(result, Err(ref errors) if errors.iter().any(|(_, error)| matches!(error, CorrectnessError::TableMismatch { .. }))),
+            "Expected TableMismatch error from corrupted table"
+        );
+    }
+
+    #[test]
+    fn test_evaluation_all_inputs_missing() {
+        let mut circuit = Circuit::default();
+
+        let a_wire = circuit.issue_input_wire();
+        let b_wire = circuit.issue_input_wire();
+        let out_wire = circuit.issue_wire();
+
+        circuit.add_gate(Gate::new(GateType::And, a_wire, b_wire, out_wire));
+        circuit.make_wire_output(out_wire);
+
+        let garbled = circuit.garble().expect("Garbling should succeed");
+
+        let result = garbled.evaluate(|_| None);
+
+        match result {
+            Err(Error::LostInput(wire)) => {
+                assert!(
+                    wire == a_wire || wire == b_wire,
+                    "Should fail on first missing input"
+                );
+            }
+            Ok(_) => panic!("Expected LostInput error, got success"),
+            Err(other) => panic!("Expected LostInput error, got: {other:?}"),
+        }
     }
 }

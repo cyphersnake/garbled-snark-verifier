@@ -3,7 +3,7 @@ use std::{fmt, mem, ops::Deref};
 use crate::{Delta, S};
 
 /// Errors that can occur during wire operations
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum WireError {
     /// Wire with the given ID was not found
     #[error("Wire with id {0} not found")]
@@ -76,6 +76,7 @@ mod garbled_wires {
     pub struct GarbledWires {
         wires: Vec<MaybeUninit<GarbledWire>>,
         initialized: BitVec,
+        max_wire_id: usize,
     }
 
     impl GarbledWires {
@@ -88,6 +89,7 @@ mod garbled_wires {
                     vec
                 },
                 initialized: BitVec::repeat(false, num_wires),
+                max_wire_id: num_wires,
             }
         }
 
@@ -136,6 +138,10 @@ mod garbled_wires {
         where
             F: FnOnce() -> GarbledWire,
         {
+            if wire_id.0 >= self.max_wire_id {
+                return Err(WireError::InvalidWireIndex(wire_id));
+            }
+            
             self.ensure_capacity(wire_id.0 + 1)?;
 
             if !self.initialized[wire_id.0] {

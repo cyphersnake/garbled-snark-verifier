@@ -1,4 +1,5 @@
 mod circuit;
+mod circuits;
 mod core;
 mod math;
 

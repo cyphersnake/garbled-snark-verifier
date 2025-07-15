@@ -15,7 +15,7 @@ pub use add::*;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("TODO")]
+    #[error("BigUint overflow: value requires {actual} bits, limit is {limit}")]
     TooBigUint { limit: usize, actual: usize },
 }
 pub type BigUintError = Error;
