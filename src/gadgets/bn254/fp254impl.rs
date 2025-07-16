@@ -165,6 +165,8 @@ pub trait Fp254Impl {
 
 #[cfg(test)]
 mod tests {
+    use test_log::test;
+
     use super::*;
 
     struct TestField;
@@ -189,6 +191,28 @@ mod tests {
         }
     }
 
+    fn test_field_add_operation(a_val: &BigUint, b_val: &BigUint, expected: &BigUint) {
+        let mut circuit = Circuit::default();
+        let a = BigIntWires::new(&mut circuit, TestField::N_BITS, true, false);
+        let b = BigIntWires::new(&mut circuit, TestField::N_BITS, true, false);
+        let result = TestField::add(&mut circuit, &a, &b);
+
+        assert_eq!(result.len(), TestField::N_BITS);
+
+        result.iter().for_each(|bit| {
+            circuit.make_wire_output(*bit);
+        });
+
+        let a_input = a.get_wire_bits_fn(a_val).unwrap();
+        let b_input = b.get_wire_bits_fn(b_val).unwrap();
+        let get_expected_result_fn = result.get_wire_bits_fn(expected).unwrap();
+
+        circuit.full_cycle_test(
+            |id| a_input(id).or_else(|| b_input(id)),
+            get_expected_result_fn,
+        );
+    }
+
     #[test]
     fn test_modulus_conversion() {
         let modulus = TestField::modulus_as_biguint();
@@ -203,5 +227,100 @@ mod tests {
         let power_of_two = BigUint::from(2u32).pow(254);
 
         assert_eq!(not_mod + modulus, power_of_two);
+    }
+
+    #[test]
+    fn test_add_zero_zero() {
+        let a = BigUint::from(0u32);
+        let b = BigUint::from(0u32);
+        let expected = BigUint::from(0u32);
+        test_field_add_operation(&a, &b, &expected);
+    }
+
+    #[test]
+    fn test_add_zero_one() {
+        let a = BigUint::from(0u32);
+        let b = BigUint::from(1u32);
+        let expected = BigUint::from(1u32);
+        test_field_add_operation(&a, &b, &expected);
+    }
+
+    #[test]
+    fn test_add_one_one() {
+        let a = BigUint::from(1u32);
+        let b = BigUint::from(1u32);
+        let expected = BigUint::from(2u32);
+        test_field_add_operation(&a, &b, &expected);
+    }
+
+    #[test]
+    fn test_add_small_numbers() {
+        let a = BigUint::from(42u32);
+        let b = BigUint::from(58u32);
+        let expected = BigUint::from(100u32);
+        test_field_add_operation(&a, &b, &expected);
+    }
+
+    #[test]
+    fn test_add_modular_reduction() {
+        let modulus = TestField::modulus_as_biguint();
+        let a = &modulus - 1u32;
+        let b = BigUint::from(2u32);
+        let expected = BigUint::from(1u32);
+        test_field_add_operation(&a, &b, &expected);
+    }
+
+    #[test]
+    fn test_add_modular_reduction_exact() {
+        let modulus = TestField::modulus_as_biguint();
+        let a = &modulus - 1u32;
+        let b = BigUint::from(1u32);
+        let expected = BigUint::from(0u32);
+        test_field_add_operation(&a, &b, &expected);
+    }
+
+    #[test]
+    fn test_add_large_numbers() {
+        let modulus = TestField::modulus_as_biguint();
+        let a = &modulus / 2u32;
+        let b = &modulus / 3u32;
+        let expected = (&modulus / 2u32 + &modulus / 3u32) % &modulus;
+        test_field_add_operation(&a, &b, &expected);
+    }
+
+    #[test]
+    fn test_add_both_near_modulus() {
+        let modulus = TestField::modulus_as_biguint();
+        let a = &modulus - 100u32;
+        let b = &modulus - 200u32;
+        let expected = (&modulus - 100u32 + &modulus - 200u32) % &modulus;
+        test_field_add_operation(&a, &b, &expected);
+    }
+
+    #[test]
+    fn test_add_maximum_values() {
+        let modulus = TestField::modulus_as_biguint();
+        let a = &modulus - 1u32;
+        let b = &modulus - 1u32;
+        let expected = (&modulus - 1u32 + &modulus - 1u32) % &modulus;
+        test_field_add_operation(&a, &b, &expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion `left == right` failed")]
+    fn test_add_wrong_size_input_a() {
+        let mut circuit = Circuit::default();
+        let a = BigIntWires::new(&mut circuit, TestField::N_BITS - 1, true, false);
+        let b = BigIntWires::new(&mut circuit, TestField::N_BITS, true, false);
+        TestField::add(&mut circuit, &a, &b);
+    }
+
+    #[test]
+    #[should_panic(expected = "assertion `left == right` failed")]
+    fn test_add_wrong_size_input_b() {
+        let mut circuit = Circuit::default();
+        let a = BigIntWires::new(&mut circuit, TestField::N_BITS, true, false);
+        let b = BigIntWires::new(&mut circuit, TestField::N_BITS - 1, true, false);
+        TestField::add(&mut circuit, &a, &b);
     }
 }

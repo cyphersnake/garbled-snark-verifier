@@ -84,6 +84,14 @@ impl BigIntWires {
         self.bits.pop()
     }
 
+    pub fn last(&self) -> Option<WireId> {
+        self.bits.last().copied()
+    }
+
+    pub fn get(&self, index: usize) -> Option<WireId> {
+        self.bits.get(index).copied()
+    }
+
     pub fn get_wire_bits_fn(&self, u: &BigUint) -> Result<impl Fn(WireId) -> Option<bool>, Error> {
         let bits = bits_from_biguint_with_len(u, self.bits.len())?;
 

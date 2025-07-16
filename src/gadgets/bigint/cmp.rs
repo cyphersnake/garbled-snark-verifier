@@ -96,7 +96,7 @@ pub fn greater_than(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> 
     };
 
     let sum = super::add_generic(circuit, a, &not_b);
-    sum.bits.last().copied().unwrap()
+    sum.last().unwrap()
 }
 
 pub fn less_than_constant(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint) -> WireId {
@@ -111,7 +111,7 @@ pub fn less_than_constant(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint) -
     };
 
     let sum = super::add_constant_generic(circuit, &not_a, b);
-    sum.bits.last().copied().unwrap()
+    sum.last().unwrap()
 }
 
 pub fn select(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires, s: WireId) -> BigIntWires {
@@ -233,7 +233,7 @@ mod tests {
         let b_input = b_wire.get_wire_bits_fn(&b_big).unwrap();
         let result_output = result_wire.get_wire_bits_fn(&expected_bn).unwrap();
 
-        result_wire.bits.iter().for_each(|bit| {
+        result_wire.iter().for_each(|bit| {
             circuit.make_wire_output(*bit);
         });
 
@@ -245,7 +245,7 @@ mod tests {
                 a_input(id).or_else(|| b_input(id))
             },
             |wire_id| {
-                if result_wire.bits.contains(&wire_id) {
+                if result_wire.iter().any(|&w| w == wire_id) {
                     result_output(wire_id)
                 } else {
                     None
