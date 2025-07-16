@@ -1,7 +1,7 @@
 use log::debug;
 
 pub use crate::GateType;
-use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, S, WireError, WireId};
+use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
@@ -230,13 +230,6 @@ impl Gate {
                 let c_label0 = a_label0 ^ &b_label0;
                 let c_label1 = c_label0 ^ delta;
 
-                #[cfg(test)]
-                {
-                    let a = self.wire_a(wires, delta)?.clone();
-                    let b = self.wire_b(wires, delta)?;
-                    debug!("gate_garble: {a:#?} XOR {b:#?} = c0={c_label0:?} c1={c_label1:?}");
-                }
-
                 self.init_wire_c(wires, c_label0, c_label1)?;
 
                 Ok(vec![])
@@ -248,13 +241,6 @@ impl Gate {
                 let c_label0 = a_label0 ^ &b_label0 ^ delta;
                 let c_label1 = c_label0 ^ delta;
 
-                #[cfg(test)]
-                {
-                    let a = self.wire_a(wires, delta)?.clone();
-                    let b = self.wire_b(wires, delta)?;
-                    debug!("gate_garble: {a:#?} XNOR {b:#?} = c0={c_label0:?} c1={c_label1:?}");
-                }
-
                 // XNOR is handled without `Wire` inversion, but with actual label switching
                 self.init_wire_c(wires, c_label0, c_label1)?;
 
@@ -263,12 +249,6 @@ impl Gate {
             GateType::Not => {
                 assert_eq!(self.wire_a, self.wire_b);
                 assert_eq!(self.wire_b, self.wire_c);
-
-                #[cfg(test)]
-                {
-                    let a = self.wire_a(wires, delta)?.clone();
-                    debug!("gate_garble: {a:#?} NOT");
-                }
 
                 self.wire_a(wires, delta)?;
 
@@ -287,11 +267,6 @@ impl Gate {
 
                 let a = self.wire_a(wires, delta)?.clone();
                 let b = self.wire_b(wires, delta)?;
-
-                #[cfg(test)]
-                {
-                    debug!("gate_garble: {a:#?} {:?} {b:#?}", self.gate_type);
-                }
 
                 let table = [(false, false), (false, true), (true, false), (true, true)]
                     .iter()
@@ -313,7 +288,6 @@ impl Gate {
                     })
                     .collect();
 
-                debug!("gate_garble: generated table with {} entries", 4);
                 Ok(table)
             }
         }
