@@ -3,10 +3,11 @@ use std::str::FromStr;
 use num_bigint::BigUint;
 use num_traits::Zero;
 
-use crate::{
-    circuit::{Circuit, bigint::BigIntWires},
-    math::montgomery::calculate_montgomery_constants,
+use super::super::{
+    Circuit,
+    bigint::{self, BigIntWires},
 };
+use crate::{Gate, math::montgomery::calculate_montgomery_constants};
 
 /// Core trait for BN254 field implementation with 254-bit prime field arithmetic
 /// Provides constants and operations for field elements in Montgomery form
@@ -79,11 +80,24 @@ pub trait Fp254Impl {
         r_inv_calc == r_inv_expected && m_inv_calc == m_inv_expected
     }
 
-    /// Field addition: (a + b) mod p
-    fn add(_circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
+    fn add(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
         assert_eq!(a.len(), Self::N_BITS);
         assert_eq!(b.len(), Self::N_BITS);
-        todo!()
+
+        let mut wires1 = bigint::add_generic(circuit, a, b);
+        let u = wires1.pop().unwrap();
+
+        let mut wires2 =
+            bigint::add_constant_generic(circuit, &wires1, &Self::not_modulus_as_biguint());
+
+        wires2.pop();
+
+        let v = bigint::less_than_constant(circuit, &wires1, &Self::modulus_as_biguint());
+        let s = circuit.issue_wire();
+
+        circuit.add_gate(Gate::and_variant(u, v, s, [true, false, false]));
+
+        bigint::select(circuit, &wires1, &wires2, s)
     }
 
     /// Field subtraction: (a - b) mod p

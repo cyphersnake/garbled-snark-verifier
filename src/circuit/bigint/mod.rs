@@ -12,6 +12,7 @@ mod add;
 mod cmp;
 mod mul;
 pub use add::*;
+pub use cmp::*;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -78,6 +79,10 @@ impl BigIntWires {
 
     pub fn iter(&self) -> impl Iterator<Item = &WireId> {
         self.bits.iter()
+    }
+
+    pub fn pop(&mut self) -> Option<WireId> {
+        self.bits.pop()
     }
 
     pub fn get_wire_bits_fn(&self, u: &BigUint) -> Result<impl Fn(WireId) -> Option<bool>, Error> {

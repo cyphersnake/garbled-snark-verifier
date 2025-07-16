@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use ark_ff::{Field, PrimeField};
 use num_bigint::BigUint;
 
 use crate::circuit::{Circuit, bigint::BigIntWires, bn254::fp254impl::Fp254Impl};
@@ -35,9 +36,33 @@ impl Fq {
         BigIntWires::new(circuit, Self::N_BITS, is_input, is_output)
     }
 
-    /// Check if field element is quadratic non-residue in Montgomery form
-    pub fn is_qnr_montgomery(_circuit: &mut Circuit, x: &BigIntWires) -> BigIntWires {
+    // Check if field element is quadratic non-residue in Montgomery form
+    //        let mut circuit = Circuit::empty();
+    //    // y = x^((p - 1)/2)
+    //    let exp = BigUint::from(ark_bn254::Fq::MODULUS_MINUS_ONE_DIV_TWO);
+    //    let y = circuit.extend(Fq::exp_by_constant_montgomery(x.clone(), exp));
+
+    //    let neg_one = -ark_bn254::Fq::ONE;
+    //    let neg_one_mont = Fq::wires_set_montgomery(neg_one);
+
+    //    let is_qnr = circuit.extend(U254::equal(y, neg_one_mont));
+
+    //    circuit.add_wires(is_qnr);
+    //    circuit
+    pub fn is_qnr_montgomery(circuit: &mut Circuit, x: &BigIntWires) -> BigIntWires {
         assert_eq!(x.len(), Self::N_BITS);
+
+        //y = x^((p - 1)/2)
+        let exp = BigUint::from(ark_bn254::Fq::MODULUS_MINUS_ONE_DIV_TWO);
+        let _y = Fq::exp_by_constant_montgomery(circuit, x, &exp);
+
+        let neg_one = -ark_bn254::Fq::ONE;
+        let _neg_one_mont = Fq::wires_set_montgomery(neg_one);
+
+        todo!()
+    }
+
+    pub fn wires_set_montgomery(_u: ark_bn254::Fq) -> BigIntWires {
         todo!()
     }
 
