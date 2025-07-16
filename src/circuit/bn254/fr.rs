@@ -1,6 +1,6 @@
 use num_bigint::BigUint;
 
-use crate::circuit::{bigint::BigIntWires, bn254::fp254impl::Fp254Impl, Circuit};
+use crate::circuit::{Circuit, bigint::BigIntWires, bn254::fp254impl::Fp254Impl};
 
 /// BN254 scalar field Fr implementation  
 pub struct Fr;
@@ -63,8 +63,7 @@ mod tests {
 
     #[test]
     fn test_new_wires() {
-        let mut circuit = Circuit::default();
-        let wires = Fr::new_wires(&mut circuit, false, false);
+        let wires = Fr::new_wires(&mut Circuit::default(), false, false);
         assert_eq!(wires.len(), 254);
     }
 }
