@@ -3,7 +3,8 @@ use std::str::FromStr;
 use ark_ff::{Field, PrimeField};
 use num_bigint::BigUint;
 
-use crate::circuit::{Circuit, bigint::BigIntWires, bn254::fp254impl::Fp254Impl};
+use super::super::{bigint::BigIntWires, bn254::fp254impl::Fp254Impl};
+use crate::circuit::Circuit;
 
 /// BN254 base field Fq implementation
 pub struct Fq;

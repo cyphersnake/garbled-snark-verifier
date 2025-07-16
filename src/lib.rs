@@ -1,5 +1,6 @@
 mod circuit;
 mod core;
+mod gadgets;
 mod math;
 
 pub use core::{
@@ -10,5 +11,5 @@ pub use core::{
     wire::{EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId},
 };
 
-pub use circuit::{BigIntWires, Circuit, CircuitError, GarbledCircuit};
+pub use circuit::{Circuit, CircuitError, GarbledCircuit};
 pub use math::*;

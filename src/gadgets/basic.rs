@@ -1,7 +1,6 @@
 use std::array;
 
-use super::Circuit;
-use crate::{Gate, GateType, WireId};
+use crate::{Circuit, Gate, GateType, WireId};
 
 impl Circuit {
     pub fn half_adder(&mut self, a: WireId, b: WireId) -> (WireId, WireId) {

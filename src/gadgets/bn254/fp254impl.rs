@@ -3,11 +3,8 @@ use std::str::FromStr;
 use num_bigint::BigUint;
 use num_traits::Zero;
 
-use super::super::{
-    Circuit,
-    bigint::{self, BigIntWires},
-};
-use crate::{Gate, math::montgomery::calculate_montgomery_constants};
+use super::super::bigint::{self, BigIntWires};
+use crate::{math::montgomery::calculate_montgomery_constants, Circuit, Gate};
 
 /// Core trait for BN254 field implementation with 254-bit prime field arithmetic
 /// Provides constants and operations for field elements in Montgomery form

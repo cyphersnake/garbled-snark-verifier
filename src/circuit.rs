@@ -1,15 +1,10 @@
 use std::{iter, ops::Not};
 
 use crate::{
-    Delta, EvaluatedWire, GarbledWires, Gate, GateError, S, WireError, WireId,
-    core::gate::CorrectnessError,
+    core::gate::CorrectnessError, Delta, EvaluatedWire, GarbledWires, Gate, GateError, WireError,
+    WireId, S,
 };
 
-mod basic;
-pub mod bigint;
-pub mod bn254;
-
-pub use bigint::BigIntWires;
 
 /// Errors that can occur during circuit operations
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
@@ -261,7 +256,7 @@ mod failure_tests {
     use std::collections::HashMap;
 
     use super::{Circuit, Error};
-    use crate::{CircuitError, Gate, GateError, GateType, core::gate::CorrectnessError};
+    use crate::{core::gate::CorrectnessError, CircuitError, Gate, GateError, GateType};
 
     #[test]
     fn test_missing_input_failure() {

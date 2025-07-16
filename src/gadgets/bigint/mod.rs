@@ -5,8 +5,7 @@ use std::{collections::HashMap, iter};
 use bitvec::prelude::*;
 pub use num_bigint::BigUint;
 
-use super::Circuit;
-use crate::WireId;
+use crate::{Circuit, WireId};
 
 mod add;
 mod cmp;
