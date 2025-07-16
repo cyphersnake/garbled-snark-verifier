@@ -1,5 +1,73 @@
 use super::{BigIntWires, BigUint};
 use crate::{Circuit, Gate, GateType, WireId};
+use bitvec::prelude::*;
+use std::sync::{OnceLock, RwLock};
+
+/// Cache of algorithm choices for every possible operand length (up to 256).
+///
+/// Each entry indicates whether the Karatsuba multiplication algorithm
+/// outperforms the naive schoolbook version for that bit-length.  `BitVec` is
+/// used to compactly store the information for all 256 entries using a single
+/// bit per value.
+///
+/// The table employs two separate bit-vectors:
+/// * `decisions` stores the actual choice (`1` for Karatsuba, `0` for the
+///   generic algorithm).
+/// * `initialized` tracks which entries have already been computed.  This
+///   mirrors the behaviour of `Option<bool>` but avoids the memory overhead of
+///   an additional byte per entry.
+///
+/// The structure is guarded by a [`RwLock`] to allow concurrent reads once the
+/// decisions have been cached.  Updates are infrequent and happen only on the
+/// first invocation for a particular length.
+#[derive(Default)]
+struct KaratsubaDecisionTable {
+    /// Decision bits, `1` means Karatsuba should be used.
+    decisions: BitVec<u8, Lsb0>,
+    /// Initialization flags for each index.
+    initialized: BitVec<u8, Lsb0>,
+}
+
+impl KaratsubaDecisionTable {
+    fn new() -> Self {
+        Self {
+            decisions: bitvec![u8, Lsb0; 0; 256],
+            initialized: bitvec![u8, Lsb0; 0; 256],
+        }
+    }
+
+    fn set(&mut self, index: usize, value: bool) {
+        self.decisions.set(index, value);
+        self.initialized.set(index, true);
+    }
+
+    fn get(&self, index: usize) -> Option<bool> {
+        if self.initialized[index] {
+            Some(self.decisions[index])
+        } else {
+            None
+        }
+    }
+}
+
+/// Global table with cached Karatsuba decisions for each operand length.
+/// Global decision table used by [`mul_karatsuba_generic`].  It is
+/// initialised on first use and persists for the lifetime of the program.
+static KARATSUBA_DECISIONS: OnceLock<RwLock<KaratsubaDecisionTable>> = OnceLock::new();
+
+fn decision_table() -> &'static RwLock<KaratsubaDecisionTable> {
+    KARATSUBA_DECISIONS.get_or_init(|| RwLock::new(KaratsubaDecisionTable::new()))
+}
+
+fn set_karatsuba_decision_flag(index: usize, value: bool) {
+    let mut table = decision_table().write().unwrap();
+    table.set(index, value);
+}
+
+fn get_karatsuba_decision_flag(index: usize) -> Option<bool> {
+    let table = decision_table().read().unwrap();
+    table.get(index)
+}
 
 fn extend_with_zero(circuit: &mut Circuit, bits: &mut Vec<WireId>) {
     let zero_wire = circuit.issue_wire();
@@ -45,7 +113,7 @@ pub fn mul_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> B
     BigIntWires { bits: result_bits }
 }
 
-pub fn mul_karatsuba_generic(
+fn mul_karatsuba_generic_impl(
     circuit: &mut Circuit,
     a: &BigIntWires,
     b: &BigIntWires,
@@ -81,8 +149,8 @@ pub fn mul_karatsuba_generic(
         bits: b.bits[len_0..].to_vec(),
     };
 
-    let sq_0 = mul_karatsuba_generic(circuit, &a_0, &b_0);
-    let sq_1 = mul_karatsuba_generic(circuit, &a_1, &b_1);
+    let sq_0 = mul_karatsuba_generic_impl(circuit, &a_0, &b_0);
+    let sq_1 = mul_karatsuba_generic_impl(circuit, &a_1, &b_1);
 
     let mut extended_a_0 = a_0.bits.clone();
     let mut extended_b_0 = b_0.bits.clone();
@@ -107,7 +175,7 @@ pub fn mul_karatsuba_generic(
     );
     extend_with_zero(circuit, &mut sq_sum.bits);
 
-    let sum_mul = mul_karatsuba_generic(circuit, &sum_a, &sum_b);
+    let sum_mul = mul_karatsuba_generic_impl(circuit, &sum_a, &sum_b);
     let cross_term_full = super::add::sub_generic_without_borrow(circuit, &sum_mul, &sq_sum);
     let cross_term = BigIntWires {
         bits: cross_term_full.bits[..(len + 1)].to_vec(),
@@ -128,6 +196,52 @@ pub fn mul_karatsuba_generic(
     result_bits[(2 * len_0)..].copy_from_slice(&new_segment2.bits[..(2 * len_1)]);
 
     BigIntWires { bits: result_bits }
+}
+
+pub fn mul_karatsuba_generic(
+    circuit: &mut Circuit,
+    a: &BigIntWires,
+    b: &BigIntWires,
+) -> BigIntWires {
+    assert_eq!(a.len(), b.len());
+    let len = a.len();
+
+    if len < 5 {
+        return mul_generic(circuit, a, b);
+    }
+
+    if let Some(flag) = get_karatsuba_decision_flag(len) {
+        return if flag {
+            mul_karatsuba_generic_impl(circuit, a, b)
+        } else {
+            mul_generic(circuit, a, b)
+        };
+    }
+
+    let generic_count = {
+        let mut tmp = Circuit::default();
+        let a_tmp = BigIntWires::new(&mut tmp, len, false, false);
+        let b_tmp = BigIntWires::new(&mut tmp, len, false, false);
+        mul_generic(&mut tmp, &a_tmp, &b_tmp);
+        tmp.gates.len()
+    };
+
+    let karatsuba_count = {
+        let mut tmp = Circuit::default();
+        let a_tmp = BigIntWires::new(&mut tmp, len, false, false);
+        let b_tmp = BigIntWires::new(&mut tmp, len, false, false);
+        mul_karatsuba_generic_impl(&mut tmp, &a_tmp, &b_tmp);
+        tmp.gates.len()
+    };
+
+    let use_karatsuba = karatsuba_count < generic_count;
+    set_karatsuba_decision_flag(len, use_karatsuba);
+
+    if use_karatsuba {
+        mul_karatsuba_generic_impl(circuit, a, b)
+    } else {
+        mul_generic(circuit, a, b)
+    }
 }
 
 pub fn mul_by_constant(circuit: &mut Circuit, a: &BigIntWires, c: &BigUint) -> BigIntWires {
