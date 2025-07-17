@@ -90,15 +90,15 @@ mod tests {
     fn not_not() {
         let mut circuit = Circuit::default();
 
-        let wire = circuit.issue_input_wire();
+        let mut wire = circuit.issue_input_wire();
         circuit.make_wire_output(wire);
 
-        circuit.add_gate(Gate::not(wire));
-        circuit.add_gate(Gate::not(wire));
+        circuit.add_gate(Gate::not(&mut wire));
+        circuit.add_gate(Gate::not(&mut wire));
 
         circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(true));
 
-        circuit.add_gate(Gate::not(wire));
+        circuit.add_gate(Gate::not(&mut wire));
 
         circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(false));
     }
@@ -107,16 +107,16 @@ mod tests {
     fn xnor_connection_test() {
         let mut circuit = Circuit::default();
 
-        let a_wire = circuit.issue_input_wire();
-        let b_wire = circuit.issue_input_wire();
+        let mut a_wire = circuit.issue_input_wire();
+        let mut b_wire = circuit.issue_input_wire();
 
         let res = circuit.issue_wire();
 
-        circuit.add_gate(Gate::not(a_wire));
-        circuit.add_gate(Gate::not(a_wire));
+        circuit.add_gate(Gate::not(&mut a_wire));
+        circuit.add_gate(Gate::not(&mut a_wire));
 
-        circuit.add_gate(Gate::not(b_wire));
-        circuit.add_gate(Gate::not(b_wire));
+        circuit.add_gate(Gate::not(&mut b_wire));
+        circuit.add_gate(Gate::not(&mut b_wire));
 
         circuit.add_gate(Gate::and(a_wire, b_wire, res));
 

@@ -5,7 +5,7 @@ use num_bigint::BigUint;
 use num_traits::{One, Zero};
 
 use super::super::bigint::{self, BigIntWires};
-use crate::{Circuit, Gate, math::montgomery::calculate_montgomery_constants};
+use crate::{math::montgomery::calculate_montgomery_constants, Circuit, Gate};
 
 /// Core trait for BN254 field implementation with 254-bit prime field arithmetic
 /// Provides constants and operations for field elements in Montgomery form
@@ -133,13 +133,14 @@ pub trait Fp254Impl {
     fn neg(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
         assert_eq!(a.len(), Self::N_BITS);
 
-        a.iter().for_each(|wire_id| {
-            circuit.add_gate(Gate::not(*wire_id));
+        let not_a = BigIntWires::new(circuit, a.len(), false, false);
+        not_a.iter().zip(a.iter()).for_each(|(not_a, a_i)| {
+            circuit.add_gate(Gate::nand(*a_i, *a_i, *not_a));
         });
 
         Self::add_constant(
             circuit,
-            a,
+            &not_a,
             &(ark_bn254::Fq::from(1) - ark_bn254::Fq::from(Self::not_modulus_as_biguint())),
         )
     }

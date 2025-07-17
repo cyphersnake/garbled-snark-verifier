@@ -135,7 +135,8 @@ impl Gate {
     }
 
     #[must_use]
-    pub fn not(wire_a: WireId) -> Self {
+    pub fn not(wire_a: &mut WireId) -> Self {
+        let wire_a = *wire_a;
         Self {
             wire_a,
             wire_b: wire_a,
