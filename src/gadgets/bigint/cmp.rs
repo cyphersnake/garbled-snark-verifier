@@ -69,7 +69,10 @@ pub fn equal_constant(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint) -> Wi
 pub fn equal_zero(circuit: &mut Circuit, a: &BigIntWires) -> WireId {
     if a.len() == 1 {
         let is_bit_zero = circuit.issue_wire();
-        circuit.add_gate(Gate::not(a.bits[0]));
+
+        // Can't use `Gate::not` to input argument
+        circuit.add_gate(Gate::nand(a.bits[0], a.bits[0], is_bit_zero));
+
         return is_bit_zero;
     }
 
@@ -89,8 +92,10 @@ pub fn greater_than(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> 
         bits: b
             .iter()
             .map(|b_i| {
-                circuit.add_gate(Gate::not(*b_i));
-                *b_i
+                let w = circuit.issue_wire();
+                // Can't use `Gate::not` to input argument
+                circuit.add_gate(Gate::nand(*b_i, *b_i, w));
+                w
             })
             .collect(),
     };
@@ -104,8 +109,10 @@ pub fn less_than_constant(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint) -
         bits: a
             .iter()
             .map(|a_i| {
-                circuit.add_gate(Gate::not(*a_i));
-                *a_i
+                let w = circuit.issue_wire();
+                // Can't use `Gate::not` to input argument
+                circuit.add_gate(Gate::nand(*a_i, *a_i, w));
+                w
             })
             .collect(),
     };
