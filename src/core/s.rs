@@ -1,11 +1,11 @@
 use std::{
     fmt,
     iter::zip,
-    ops::{Add, BitXor},
+    ops::{Add, BitXor, BitXorAssign},
 };
 
 use blake3::hash;
-use rand::{Rng, rng};
+use rand::{rng, Rng};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct S(pub [u8; 32]);
@@ -104,6 +104,14 @@ impl BitXor<&S> for S {
             self.0[i] ^= rhs.0[i];
         }
         self
+    }
+}
+
+impl BitXorAssign<&S> for S {
+    fn bitxor_assign(&mut self, rhs: &S) {
+        for i in 0..32 {
+            self.0[i] ^= rhs.0[i];
+        }
     }
 }
 

@@ -1,7 +1,11 @@
 use log::debug;
 
 pub use crate::GateType;
-use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, S, WireError, WireId};
+use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
+
+pub type GateId = usize;
+
+const LSB: u8 = 1;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, thiserror::Error, PartialEq, Eq)]
@@ -218,10 +222,16 @@ impl Gate {
             .map(|_| ())
     }
 
-    pub fn garble(&self, wires: &mut GarbledWires, delta: &Delta) -> Result<Vec<S>, Error> {
+    /// Return ciphertext for garble table if presented
+    pub fn garble(
+        &self,
+        gate_id: GateId,
+        wires: &mut GarbledWires,
+        delta: &Delta,
+    ) -> Result<Option<S>, Error> {
         debug!(
-            "gate_garble: {:?} {}+{}->{}",
-            self.gate_type, self.wire_a, self.wire_b, self.wire_c
+            "gate_garble: {:?} {}+{}->{} gid={}",
+            self.gate_type, self.wire_a, self.wire_b, self.wire_c, gate_id
         );
         match self.gate_type {
             GateType::Xor => {
@@ -233,7 +243,7 @@ impl Gate {
 
                 self.init_wire_c(wires, c_label0, c_label1)?;
 
-                Ok(vec![])
+                Ok(None)
             }
             GateType::Xnor => {
                 let a_label0 = self.wire_a(wires, delta)?.select(false);
@@ -244,7 +254,7 @@ impl Gate {
 
                 self.init_wire_c(wires, c_label0, c_label1)?;
 
-                Ok(vec![])
+                Ok(None)
             }
             GateType::Not => {
                 assert_eq!(self.wire_a, self.wire_b);
@@ -256,39 +266,37 @@ impl Gate {
                     .toggle_wire_not_mark(self.wire_c)
                     .map_err(|err| Error::InitWire { wire: "c", err })?;
 
-                Ok(vec![])
+                Ok(None)
             }
-            _gt => {
-                let gate_f = self.gate_type.f();
-                let c = wires
-                    .init(self.wire_c, GarbledWire::random(delta))
-                    .map_err(|err| Error::GetOrInitWire { wire: "c", err })?
-                    .clone();
+            _ => {
+                let (alpha_a, _alpha_b, alpha_c) = alphas(self.gate_type.truth_table());
+                let tweak = gate_id;
 
+                // Input wire labels
                 let a = self.wire_a(wires, delta)?.clone();
-                let b = self.wire_b(wires, delta)?;
+                let b = self.wire_b(wires, delta)?.clone();
 
-                let table = [(false, false), (false, true), (true, false), (true, true)]
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, (i, j))| {
-                        let k = (gate_f)(*i, *j);
-                        let a_label = a.select(*i);
-                        let b_label = b.select(*j);
-                        let c_label = c.select(k);
-                        let ab_hash = S::hash_together(a_label, b_label);
-                        let table_value = c_label.neg() + ab_hash;
+                // --- two calls to H ---
+                let h_b0 = aes_hash(&b.label0, tweak); // ① H(B0)
+                let h_b1 = aes_hash(&b.label1, tweak); // ② H(B1)
 
-                        debug!(
-                            "gate_garble[{idx}]: {a_label:?} {:?} {b_label:?} = {c_label:?} ({ab_hash:?} -> {table_value:?})",
-                            self.gate_type
-                        );
+                // Evaluator‑half ciphertext:  T = H(B0) ⊕ H(B1) ⊕ W^{αa}(A)
+                let wa = if alpha_a { a.label1 } else { a.label0 }; // no hash here
+                let t = h_b0 ^ &h_b1 ^ &wa;
 
-                        table_value
-                    })
-                    .collect();
+                // Output‑0 label  W0 = H(B^{pb})   (reuse one of the hashes, no extra call)
+                let pb = perm_bit(&b.label0);
+                let mut w0 = if !pb { h_b0 } else { h_b1 };
 
-                Ok(table)
+                if alpha_c {
+                    w0 ^= delta;
+                }
+
+                // Output‑1 label  W1 = W0 ⊕ Δ
+                let w1 = w0 ^ delta;
+                self.init_wire_c(wires, w0, w1)?;
+
+                Ok(Some(t)) // exactly one ciphertext
             }
         }
     }
@@ -303,8 +311,39 @@ impl Gate {
     }
 }
 
+/// Fixed-key AES hash with unique tweak per gate
+fn aes_hash(x: &S, tweak: GateId) -> S {
+    // Using Blake3 as AES substitute for now - in production should use AES
+    S(*blake3::Hasher::new()
+        .update(&x.0)
+        .update(&tweak.to_le_bytes())
+        .finalize()
+        .as_bytes())
+}
+
+/// Map 4-bit truth table to (alpha_a, alpha_b, alpha_c), odd-parity only
+fn alphas(tt: u8) -> (bool, bool, bool) {
+    assert_eq!(tt.count_ones() % 2, 1, "Truth table must have odd parity");
+
+    const fn _alphas(tt: u8) -> (bool, bool, bool) {
+        let alpha_c = (tt & 1) != 0;
+        let f01 = ((tt >> 1) & 1) != 0;
+        let f10 = ((tt >> 2) & 1) != 0;
+        (f10 ^ alpha_c, f01 ^ alpha_c, alpha_c)
+    }
+
+    _alphas(tt)
+}
+
+/// Get permute bit (LSB) from S
+const fn perm_bit(s: &S) -> bool {
+    (s.0[31] & LSB) != 0
+}
+
 #[derive(thiserror::Error, Debug, PartialEq)]
 pub enum CorrectnessError {
+    #[error("Gate {0} is not calculated but already requested")]
+    NotEvaluated(WireId),
     #[error("Gate verification failed: computed {calculated}, expected {actual}")]
     Value { calculated: bool, actual: bool },
     #[error("XOR gate label mismatch: computed {calculated:?}, expected {actual:?}")]
@@ -320,15 +359,13 @@ pub enum CorrectnessError {
     },
 
     #[error(
-        "Garbled table mismatch at row {table_index}: expected {evaluated_c_label:?}, got table entry"
+        "Garbled table mismatch at row {table_row:#?}: expected {evaluated_c_label:?}, got table entry {c:#?}"
     )]
     TableMismatch {
-        table_row: Vec<S>,
+        table_row: S,
         a: EvaluatedWire,
         b: EvaluatedWire,
         c: EvaluatedWire,
-        table_index: usize,
-        ab_hash: S,
         evaluated_c_label: S,
     },
 }
@@ -336,15 +373,36 @@ pub enum CorrectnessError {
 impl Gate {
     pub fn check_correctness<'s, 'w>(
         &'s self,
+        gate_id: GateId,
         get_evaluated: impl Fn(WireId) -> Option<&'w EvaluatedWire>,
-        table: &[Vec<S>],
+        garble_table: &[S],
         table_gate_index: &mut usize,
     ) -> Result<(), Vec<CorrectnessError>> {
-        let a = get_evaluated(self.wire_a).unwrap();
-        let b = get_evaluated(self.wire_b).unwrap();
-        let c = get_evaluated(self.wire_c).unwrap();
+        let a = get_evaluated(self.wire_a);
+        let b = get_evaluated(self.wire_b);
+        let c = get_evaluated(self.wire_c);
 
         let mut errors = vec![];
+
+        let (a, b, c) = match (a, b, c) {
+            (Some(a), Some(b), Some(c)) => (a, b, c),
+            (a, b, c) => {
+                if a.is_none() {
+                    errors.push(CorrectnessError::NotEvaluated(self.wire_a));
+                }
+
+                if b.is_none() {
+                    errors.push(CorrectnessError::NotEvaluated(self.wire_b));
+                }
+
+                if c.is_none() {
+                    errors.push(CorrectnessError::NotEvaluated(self.wire_c));
+                }
+
+                return Err(errors);
+            }
+        };
+
         log::debug!("gate_eval: {:?} a={:?} b={:?}", self.gate_type, a, b);
 
         // We can't check `EvaluatedWire` for Not Gate,
@@ -393,25 +451,28 @@ impl Gate {
                 }
             }
             _gt => {
-                let i = a.value() as usize;
-                let j = b.value() as usize;
-                let table_index = (i << 1) | j;
+                let h_wb = aes_hash(&b.active_label, gate_id);
 
-                let table_value = &table[*table_gate_index][table_index];
+                let sb = b.active_label.0[31] & 1; // 0 или 1
+
+                let t = garble_table[*table_gate_index];
                 *table_gate_index += 1;
-                let ab_hash = S::hash_together(a.active_label, b.active_label);
 
-                let c_label = table_value.neg() + ab_hash;
+                let we = if sb == 0 {
+                    h_wb
+                } else {
+                    h_wb ^ &t ^ &a.active_label
+                };
 
-                if c_label != c.active_label {
+                let calculated_label = a.active_label ^ &we;
+
+                if calculated_label != c.active_label {
                     errors.push(CorrectnessError::TableMismatch {
-                        table_row: table[*table_gate_index - 1].clone(),
-                        table_index,
+                        table_row: garble_table[*table_gate_index - 1],
                         a: a.clone(),
                         b: b.clone(),
                         c: c.clone(),
-                        ab_hash,
-                        evaluated_c_label: c_label,
+                        evaluated_c_label: calculated_label,
                     })
                 }
             }
@@ -431,6 +492,8 @@ mod tests {
 
     use super::*;
 
+    const GATE_ID: GateId = 0;
+
     fn create_test_delta() -> Delta {
         Delta::generate()
     }
@@ -448,8 +511,10 @@ mod tests {
         let mut wires = issue_test_wire();
 
         let table = gate
-            .garble(&mut wires, &delta)
-            .expect("Garbling should succeed");
+            .garble(GATE_ID, &mut wires, &delta)
+            .expect("Garbling should succeed")
+            .map(|row| vec![row])
+            .unwrap_or_default();
 
         let wire_a_garbled = wires.get(gate.wire_a).expect("Wire A should exist");
         let wire_b_garbled = wires.get(gate.wire_b).expect("Wire B should exist");
@@ -483,8 +548,9 @@ mod tests {
             let mut table_index = 0;
 
             let correctness_result = gate.check_correctness(
+                GATE_ID,
                 |wire_id: WireId| evaluations.get(&wire_id),
-                &[table.clone()],
+                &table,
                 &mut table_index,
             );
 
@@ -501,8 +567,10 @@ mod tests {
         let mut wires = issue_test_wire();
 
         let table = gate
-            .garble(&mut wires, &delta)
-            .expect("Garbling should succeed");
+            .garble(GATE_ID, &mut wires, &delta)
+            .expect("Garbling should succeed")
+            .map(|row| vec![row])
+            .unwrap_or_default();
 
         let wire_garbled = wires.get(gate.wire_a).expect("Wire should exist");
 
@@ -528,8 +596,9 @@ mod tests {
             let mut table_index = 0;
 
             let correctness_result = gate.check_correctness(
+                GATE_ID,
                 |wire_id: WireId| evaluations.get(&wire_id),
-                &[table.clone()],
+                &table,
                 &mut table_index,
             );
 
@@ -613,8 +682,8 @@ mod tests {
 
     #[test]
     fn test_not_gate() {
-        let wire_a = WireId(0);
-        let gate = Gate::not(wire_a);
+        let mut wire_a = WireId(0);
+        let gate = Gate::not(&mut wire_a);
         test_not_gate_e2e(gate);
     }
 }

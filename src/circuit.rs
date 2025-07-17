@@ -1,8 +1,8 @@
-use std::{iter, ops::Not};
+use std::iter;
 
 use crate::{
-    Delta, EvaluatedWire, GarbledWires, Gate, GateError, S, WireError, WireId,
-    core::gate::CorrectnessError,
+    core::gate::CorrectnessError, Delta, EvaluatedWire, GarbledWires, Gate, GateError, WireError,
+    WireId, S,
 };
 
 /// Errors that can occur during circuit operations
@@ -84,12 +84,12 @@ impl Circuit {
                     g.wire_b,
                     g.wire_c
                 );
-                match g.garble(&mut wires, &delta) {
-                    Ok(row) if row.is_empty().not() => {
-                        log::debug!("garble: gate[{}] table_entries={}", i, row.len());
+                match g.garble(i, &mut wires, &delta) {
+                    Ok(Some(row)) => {
+                        log::debug!("garble: gate[{i}] table_entries={row:?}");
                         Some(Ok(row))
                     }
-                    Ok(_) => {
+                    Ok(None) => {
                         log::debug!("garble: gate[{i}] free");
                         None
                     }
@@ -99,7 +99,7 @@ impl Circuit {
                     }
                 }
             })
-            .collect::<Result<Vec<Vec<_>>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?;
 
         log::debug!("garble: complete table_size={}", garbled_table.len());
         Ok(GarbledCircuit {
@@ -142,14 +142,14 @@ pub struct GarbledCircuit {
     pub structure: Circuit,
     pub wires: GarbledWires,
     pub delta: Delta,
-    pub garbled_table: Vec<Vec<S>>,
+    pub garbled_table: Vec<S>,
 }
 
 #[derive(Debug)]
 pub struct EvaluatedCircuit {
     pub structure: Circuit,
     wires: Vec<EvaluatedWire>,
-    pub garbled_table: Vec<Vec<S>>,
+    pub garbled_table: Vec<S>,
 }
 
 impl EvaluatedCircuit {
@@ -170,9 +170,11 @@ impl EvaluatedCircuit {
             .structure
             .gates
             .iter()
-            .flat_map(|gate| {
+            .enumerate()
+            .flat_map(|(gate_id, gate)| {
                 match gate.check_correctness(
-                    |wire_id| self.get_evaluated_wire(wire_id),
+                    gate_id,
+                    &|wire_id| self.get_evaluated_wire(wire_id),
                     &self.garbled_table,
                     &mut table_gate_index,
                 ) {
@@ -255,7 +257,7 @@ mod failure_tests {
     use std::collections::HashMap;
 
     use super::{Circuit, Error};
-    use crate::{CircuitError, Gate, GateError, GateType, core::gate::CorrectnessError};
+    use crate::{core::gate::CorrectnessError, CircuitError, Gate, GateError, GateType};
 
     #[test]
     fn test_missing_input_failure() {
@@ -352,7 +354,7 @@ mod failure_tests {
         let mut garbled = circuit.garble().expect("Garbling should succeed");
 
         // Corrupt the entire first row of the garbled table
-        for entry in &mut garbled.garbled_table[0] {
+        for entry in &mut garbled.garbled_table {
             *entry = crate::S::random();
         }
 

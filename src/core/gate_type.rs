@@ -15,7 +15,7 @@ pub enum GateType {
 }
 
 impl GateType {
-    pub fn f(&self) -> fn(bool, bool) -> bool {
+    pub const fn f(&self) -> fn(bool, bool) -> bool {
         match self {
             GateType::And => |a, b| a & b,
             GateType::Nand => |a, b| !(a & b),
@@ -54,6 +54,64 @@ impl GateType {
             GateType::Nimp => false,
             GateType::Or => false,
             GateType::Xor => false,
+        }
+    }
+
+    /// Get 4-bit truth table for the gate (bit0=f(0,0), bit1=f(0,1), bit2=f(1,0), bit3=f(1,1))
+    pub fn truth_table(&self) -> u8 {
+        let f = self.f();
+        let mut tt = 0u8;
+        if f(false, false) {
+            tt |= 1;
+        } // bit 0
+        if f(false, true) {
+            tt |= 2;
+        } // bit 1
+        if f(true, false) {
+            tt |= 4;
+        } // bit 2
+        if f(true, true) {
+            tt |= 8;
+        } // bit 3
+        tt
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_truth_tables() {
+        // AND: f(0,0)=0, f(0,1)=0, f(1,0)=0, f(1,1)=1 -> 0b1000 = 8
+        assert_eq!(GateType::And.truth_table(), 8);
+
+        // OR: f(0,0)=0, f(0,1)=1, f(1,0)=1, f(1,1)=1 -> 0b1110 = 14
+        assert_eq!(GateType::Or.truth_table(), 14);
+
+        // XOR: f(0,0)=0, f(0,1)=1, f(1,0)=1, f(1,1)=0 -> 0b0110 = 6
+        assert_eq!(GateType::Xor.truth_table(), 6);
+
+        // NAND: f(0,0)=1, f(0,1)=1, f(1,0)=1, f(1,1)=0 -> 0b0111 = 7
+        assert_eq!(GateType::Nand.truth_table(), 7);
+    }
+
+    #[test]
+    fn test_odd_parity_gates() {
+        // Half-gates only work with odd-parity gates
+        let odd_parity_gates = [
+            GateType::Nand,
+            GateType::Nimp,
+            GateType::Imp,
+            GateType::Ncimp,
+            GateType::Cimp,
+            GateType::Nor,
+            GateType::Xor,
+        ];
+
+        for gate in odd_parity_gates {
+            let tt = gate.truth_table();
+            assert_eq!(tt.count_ones() % 2, 1, "{gate:?} should have odd parity");
         }
     }
 }
