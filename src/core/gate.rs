@@ -269,34 +269,29 @@ impl Gate {
                 Ok(None)
             }
             _ => {
-                let (alpha_a, _alpha_b, alpha_c) = alphas(self.gate_type.truth_table());
-                let tweak = gate_id;
-
-                // Input wire labels
                 let a = self.wire_a(wires, delta)?.clone();
-                let b = self.wire_b(wires, delta)?.clone();
+                let b = self.wire_b(wires, delta)?;
 
-                // --- two calls to H ---
-                let h_b0 = aes_hash(&b.label0, tweak); // ① H(B0)
-                let h_b1 = aes_hash(&b.label1, tweak); // ② H(B1)
+                // gate parameters (same as before)
+                let (alpha_a, alpha_b, alpha_c) = alphas(self.gate_type.truth_table());
 
-                // Evaluator‑half ciphertext:  T = H(B0) ⊕ H(B1) ⊕ W^{αa}(A)
-                let wa = if alpha_a { a.label1 } else { a.label0 }; // no hash here
-                let t = h_b0 ^ &h_b1 ^ &wa;
+                // pre-compute both right-hashes
+                let h_b0 = aes_hash(&b.select(false), gate_id);
+                let h_b1 = aes_hash(&b.select(true), gate_id);
 
-                // Output‑0 label  W0 = H(B^{pb})   (reuse one of the hashes, no extra call)
-                let pb = perm_bit(&b.label0);
-                let mut w0 = if !pb { h_b0 } else { h_b1 };
+                // Wa^{αa}
+                let w_a_alpha = a.select(alpha_a);
 
-                if alpha_c {
-                    w0 ^= delta;
-                }
+                // ---------- ONE ciphertext we will transmit ----------
+                let ciphertext = h_b0 ^ &h_b1 ^ &w_a_alpha; // TE
 
-                // Output‑1 label  W1 = W0 ⊕ Δ
-                let w1 = w0 ^ delta;
-                self.init_wire_c(wires, w0, w1)?;
+                // ----------- output-zero label we KEEP ---------------
+                let pb = perm_bit(&b.select(false)); // permute bit of wire b
+                let w0 = if pb { h_b1 } else { h_b0 }; // правильно
 
-                Ok(Some(t)) // exactly one ciphertext
+                self.init_wire_c(wires, w0, w0 ^ delta)?;
+
+                Ok(Some(ciphertext))
             }
         }
     }
@@ -374,7 +369,7 @@ impl Gate {
     pub fn check_correctness<'s, 'w>(
         &'s self,
         gate_id: GateId,
-        get_evaluated: impl Fn(WireId) -> Option<&'w EvaluatedWire>,
+        get_evaluated: &impl Fn(WireId) -> Option<&'w EvaluatedWire>,
         garble_table: &[S],
         table_gate_index: &mut usize,
     ) -> Result<(), Vec<CorrectnessError>> {
@@ -451,20 +446,16 @@ impl Gate {
                 }
             }
             _gt => {
-                let h_wb = aes_hash(&b.active_label, gate_id);
-
-                let sb = b.active_label.0[31] & 1; // 0 или 1
-
-                let t = garble_table[*table_gate_index];
+                let ct = garble_table[*table_gate_index];
                 *table_gate_index += 1;
 
-                let we = if sb == 0 {
-                    h_wb
-                } else {
-                    h_wb ^ &t ^ &a.active_label
-                };
+                // pre-compute both right-hashes
+                let h_b = aes_hash(&b.active_label, gate_id);
 
-                let calculated_label = a.active_label ^ &we;
+                let calculated_label = match perm_bit(&b.active_label) {
+                    true => h_b ^ &ct ^ &a.active_label,
+                    false => h_b,
+                };
 
                 if calculated_label != c.active_label {
                     errors.push(CorrectnessError::TableMismatch {
@@ -549,7 +540,7 @@ mod tests {
 
             let correctness_result = gate.check_correctness(
                 GATE_ID,
-                |wire_id: WireId| evaluations.get(&wire_id),
+                &|wire_id: WireId| evaluations.get(&wire_id),
                 &table,
                 &mut table_index,
             );
@@ -597,7 +588,7 @@ mod tests {
 
             let correctness_result = gate.check_correctness(
                 GATE_ID,
-                |wire_id: WireId| evaluations.get(&wire_id),
+                &|wire_id: WireId| evaluations.get(&wire_id),
                 &table,
                 &mut table_index,
             );

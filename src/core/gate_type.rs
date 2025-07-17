@@ -106,7 +106,6 @@ mod tests {
             GateType::Ncimp,
             GateType::Cimp,
             GateType::Nor,
-            GateType::Xor,
         ];
 
         for gate in odd_parity_gates {
