@@ -33,7 +33,7 @@ impl Deref for WireId {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GarbledWire {
     pub label0: S,
     pub label1: S,
@@ -181,7 +181,7 @@ impl Default for EvaluatedWire {
 }
 
 impl EvaluatedWire {
-    pub fn new_from_garbled(garbled_wire: GarbledWire, value: bool) -> Self {
+    pub fn new_from_garbled(garbled_wire: &GarbledWire, value: bool) -> Self {
         Self {
             active_label: garbled_wire.select(value),
             value,

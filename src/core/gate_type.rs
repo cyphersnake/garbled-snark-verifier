@@ -75,11 +75,66 @@ impl GateType {
         } // bit 3
         tt
     }
+
+    /// Map 4-bit truth table to (alpha_a, alpha_b, alpha_c), odd-parity only
+    pub fn alphas(&self) -> (bool, bool, bool) {
+        let tt = self.truth_table();
+        assert_eq!(tt.count_ones() % 2, 1, "Truth table must have odd parity");
+
+        alphas(tt)
+    }
+}
+
+const fn alphas(tt: u8) -> (bool, bool, bool) {
+    let f00 = (tt & 1) != 0;
+    let f01 = ((tt >> 1) & 1) != 0;
+    let f10 = ((tt >> 2) & 1) != 0;
+
+    let alpha_a = f01 ^ f00; // formula (2)
+    let alpha_b = f10 ^ f00;
+    let alpha_c = f00 ^ (alpha_a & alpha_b); // formula (2)
+
+    (alpha_a, alpha_b, alpha_c)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Checks that alphas(tt) satisfies the exact formula (3) Half-Gates
+    /// for all 2-input gates of odd parity (8 pieces out of 16).
+    #[test]
+    fn alphas_satisfy_equation_3_for_all_odd_parity_gates() {
+        for tt in 0u8..16 {
+            if tt.count_ones() & 1 == 0 {
+                continue;
+            }
+
+            // calculate α-parameters with the function under the test
+            let (alpha_a, alpha_b, alpha_c) = alphas(tt);
+
+            // check equivalence (3) on each of the 4 sets of inputs (a,b)
+            for (a, b) in [(false, false), (false, true), (true, false), (true, true)] {
+                // source value from truth-table: bits are in the order 00 → 01 → 10 → 11
+                let idx = (a as u8) << 1 | (b as u8);
+                let f_ab = ((tt >> idx) & 1) != 0;
+
+                // right side of formula (3)
+                let g_ab = (a ^ alpha_a) & (b ^ alpha_b) ^ alpha_c;
+
+                assert!(
+                    f_ab == g_ab,
+                    "Equation (3) failed for tt={:#06b}, inputs ({},{}) \
+                 ⇒ expected {}, got {} (α= {:?})",
+                    tt,
+                    a as u8,
+                    b as u8,
+                    f_ab,
+                    g_ab,
+                    (alpha_a, alpha_b, alpha_c)
+                );
+            }
+        }
+    }
 
     #[test]
     fn test_truth_tables() {
@@ -100,12 +155,14 @@ mod tests {
     fn test_odd_parity_gates() {
         // Half-gates only work with odd-parity gates
         let odd_parity_gates = [
+            GateType::And,
             GateType::Nand,
             GateType::Nimp,
             GateType::Imp,
             GateType::Ncimp,
             GateType::Cimp,
             GateType::Nor,
+            GateType::Or,
         ];
 
         for gate in odd_parity_gates {
