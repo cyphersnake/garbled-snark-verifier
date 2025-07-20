@@ -500,7 +500,10 @@ mod garbling {
     ) -> S {
         let h_b = aes_hash(&b.active_label, gate_id);
 
-        match perm_bit(&b.active_label) {
+        let result = (gate_type.f())(a.value(), b.value());
+        let p_b = perm_bit(&b.active_label);
+
+        match p_b {
             true => h_b ^ ciphertext ^ &a.active_label,
             false => h_b,
         }
@@ -525,6 +528,7 @@ mod garbling {
                 wire_b_lsb0: bool,
                 a_value: bool,
                 b_value: bool,
+                c_value: bool,
                 c: GarbledWire,
                 evaluated: S,
                 expected: S,
@@ -575,6 +579,7 @@ mod garbling {
                                 c: c.clone(),
                                 a_value: a_vl,
                                 b_value: b_vl,
+                                c_value: (gt.f())(a_vl, b_vl),
                                 evaluated,
                                 expected,
                             });
@@ -583,9 +588,31 @@ mod garbling {
                 }
             }
 
+            // Create bitmask visualization (16 cases total: 2×2×4)
+            let mut bitmask = String::with_capacity(16);
+
+            for wire_a_lsb0 in [false, true] {
+                for wire_b_lsb0 in [false, true] {
+                    for (a_vl, b_vl) in TEST_CASES {
+                        let failed = failed_cases.iter().any(|fc| {
+                            fc.wire_a_lsb0 == wire_a_lsb0
+                                && fc.wire_b_lsb0 == wire_b_lsb0
+                                && fc.a_value == a_vl
+                                && fc.b_value == b_vl
+                        });
+                        bitmask.push(if failed { '0' } else { '1' });
+                    }
+                }
+            }
+
             let mut error = String::new();
-            error.push_str(&format!("{:?}", gt.alphas()));
-            error.push_str(&format!("fail {}/16\n", failed_cases.len()));
+            error.push_str(&format!("{:?}\n", gt.alphas()));
+            error.push_str(&format!(
+                "Bitmask: {} ({}/16 failed)\n",
+                bitmask,
+                failed_cases.len()
+            ));
+            error.push_str("Order: wire_a_lsb0,wire_b_lsb0,a_value,b_value\n");
             for case in failed_cases.iter() {
                 error.push_str(&format!("{case:#?}\n"));
             }
