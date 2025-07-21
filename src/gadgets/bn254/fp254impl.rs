@@ -146,28 +146,25 @@ pub trait Fp254Impl {
     }
 
     /// Field doubling: (2 * a) mod p
-    fn double(_circuit: &mut Circuit, _a: &BigIntWires) -> BigIntWires {
-        todo!()
-        //assert_eq!(a.len(), Self::N_BITS);
+    fn double(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
+        assert_eq!(a.len(), Self::N_BITS);
 
-        //let shift_wire = circuit.issue_wire();
-        //circuit.add_gate(Gate::constant(shift_wire, false));
+        let shift_wire = circuit.get_false_wire_constant();
 
-        //let mut aa = a.clone();
-        //let u = aa.pop().unwrap();
-        //let mut shifted_wires = vec![shift_wire];
-        //shifted_wires.extend(aa);
+        let mut shifted_a = a.clone();
+        let u = shifted_a.pop().unwrap();
+        shifted_a.insert(0, shift_wire);
 
-        //let c = Self::not_modulus_as_biguint();
-        //let mut wires_2 = bigint::add_constant_generic(circuit, &shifted_wires, &c);
-        //wires_2.pop();
+        let mut wires_2 =
+            bigint::add_constant_generic(circuit, &shifted_a, &Self::not_modulus_as_biguint());
+        wires_2.pop();
 
-        //let v = bigint::less_than_constant(circuit, &shifted_wires, &Self::modulus_as_biguint());
-        //let s = circuit.issue_wire();
+        let v = bigint::less_than_constant(circuit, &shifted_a, &Self::modulus_as_biguint());
 
-        //circuit.add_gate(Gate::and_variant(u, v, s, [true, false, false]));
+        let s = circuit.issue_wire();
+        circuit.add_gate(Gate::and_variant(u, v, s, [true, false, false]));
 
-        //bigint::select(circuit, &shifted_wires, &wires_2, s)
+        bigint::select(circuit, &shifted_a, &wires_2, s)
     }
 
     /// Field halving: (a / 2) mod p
@@ -182,13 +179,12 @@ pub trait Fp254Impl {
     }
 
     /// Montgomery multiplication: (a * b * R^-1) mod p
-    fn mul_montgomery(_circuit: &mut Circuit, _a: &BigIntWires, _b: &BigIntWires) -> BigIntWires {
-        todo!()
-        //assert_eq!(a.len(), Self::N_BITS);
-        //assert_eq!(b.len(), Self::N_BITS);
+    fn mul_montgomery(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
+        assert_eq!(a.len(), Self::N_BITS);
+        assert_eq!(b.len(), Self::N_BITS);
 
-        //let mul_result = bigint::mul::mul_karatsuba_generic(circuit, a, b);
-        //Self::montgomery_reduce(circuit, &mul_result)
+        let mul_result = bigint::mul_karatsuba_generic(circuit, a, b);
+        Self::montgomery_reduce(circuit, &mul_result)
     }
 
     /// Montgomery squaring: (a * a * R^-1) mod p
@@ -197,67 +193,34 @@ pub trait Fp254Impl {
     }
 
     /// Montgomery reduction: converts from Montgomery form to normal form
-    fn montgomery_reduce(_circuit: &mut Circuit, _x: &BigIntWires) -> BigIntWires {
-        todo!()
-        //assert_eq!(x.len(), 2 * Self::N_BITS);
+    fn montgomery_reduce(circuit: &mut Circuit, x: &BigIntWires) -> BigIntWires {
+        assert_eq!(x.len(), 2 * Self::N_BITS);
 
-        //// Extract low and high parts of x
-        //let mut x_low_bits = Vec::new();
-        //let mut x_high_bits = Vec::new();
+        let (x_low, x_high) = x.clone().split_at(254);
 
-        //for i in 0..254 {
-        //    x_low_bits.push(x.get(i).unwrap());
-        //}
-        //for i in 254..x.len() {
-        //    x_high_bits.push(x.get(i).unwrap());
-        //}
+        let q = bigint::mul_by_constant_modulo_power_two(
+            circuit,
+            &x_low,
+            &Self::montgomery_m_inverse_as_biguint(),
+            254,
+        );
 
-        //let x_low = BigIntWires { bits: x_low_bits };
-        //let x_high = BigIntWires { bits: x_high_bits };
+        let sub = bigint::mul_by_constant(circuit, &q, &Self::modulus_as_biguint())
+            .split_at(254)
+            .1
+            .truncate(254);
 
-        //let q = bigint::mul::mul_by_constant_modulo_power_two(
-        //    circuit,
-        //    &x_low,
-        //    &Self::montgomery_m_inverse_as_biguint(),
-        //    254,
-        //);
+        let bound_check = bigint::greater_than(circuit, &sub, &x_high);
 
-        //let sub = bigint::mul::mul_by_constant(circuit, &q, &Self::modulus_as_biguint());
+        let modulus_as_biguint =
+            BigIntWires::new_constant(circuit, x.len(), &Self::modulus_as_biguint()).unwrap();
 
-        //// Extract high part of sub (bits 254..508)
-        //let mut sub_high_bits = Vec::new();
-        //for i in 254..sub.len().min(508) {
-        //    if let Some(bit) = sub.get(i) {
-        //        sub_high_bits.push(bit);
-        //    }
-        //}
-        //let sub_high = BigIntWires {
-        //    bits: sub_high_bits,
-        //};
+        let subtract_if_too_much =
+            bigint::self_or_zero_generic(circuit, &modulus_as_biguint, bound_check);
 
-        //let bound_check = bigint::greater_than(circuit, &sub_high, &x_high);
+        let new_sub = bigint::sub_generic_without_borrow(circuit, &sub, &subtract_if_too_much);
 
-        //// Create modulus wires for conditional subtraction
-        //let mut modulus_bits = Vec::new();
-        //let modulus_biguint = Self::modulus_as_biguint();
-        //let modulus_bitvec =
-        //    bigint::bits_from_biguint_with_len(&modulus_biguint, Self::N_BITS).unwrap();
-        //for i in 0..Self::N_BITS {
-        //    let wire = circuit.issue_wire();
-        //    circuit.add_gate(Gate::constant(wire, modulus_bitvec[i]));
-        //    modulus_bits.push(wire);
-        //}
-        //let modulus_wires = BigIntWires { bits: modulus_bits };
-
-        //let subtract_if_too_much = bigint::select(
-        //    circuit,
-        //    &modulus_wires,
-        //    &BigIntWires::new(circuit, Self::N_BITS, false, false),
-        //    bound_check,
-        //);
-
-        //let new_sub = bigint::sub_generic_without_borrow(circuit, &sub_high, &subtract_if_too_much);
-        //bigint::sub_generic_without_borrow(circuit, &x_high, &new_sub)
+        bigint::sub_generic_without_borrow(circuit, &x_high, &new_sub)
     }
 
     /// Modular inverse using extended Euclidean algorithm

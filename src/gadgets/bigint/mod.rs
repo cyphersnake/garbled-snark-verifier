@@ -12,6 +12,7 @@ mod cmp;
 mod mul;
 pub use add::*;
 pub use cmp::*;
+pub use mul::*;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -66,6 +67,19 @@ impl BigIntWires {
         }
     }
 
+    pub fn new_constant(circuit: &mut Circuit, len: usize, u: &BigUint) -> Result<Self, Error> {
+        let bits = bits_from_biguint_with_len(u, len)?;
+
+        let bits = (0..len)
+            .map(|i| match *bits.get(i).unwrap() {
+                true => circuit.get_true_wire_constant(),
+                false => circuit.get_false_wire_constant(),
+            })
+            .collect::<Vec<_>>();
+
+        Ok(Self { bits })
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         self.bits.len()
@@ -84,12 +98,30 @@ impl BigIntWires {
         self.bits.pop()
     }
 
+    pub fn insert(&mut self, index: usize, wire: WireId) {
+        self.bits.insert(index, wire);
+    }
+
     pub fn last(&self) -> Option<WireId> {
         self.bits.last().copied()
     }
 
     pub fn get(&self, index: usize) -> Option<WireId> {
         self.bits.get(index).copied()
+    }
+
+    pub fn split_at(mut self, index: usize) -> (BigIntWires, BigIntWires) {
+        let right_bits = self.bits.split_off(index);
+
+        (
+            BigIntWires { bits: self.bits },
+            BigIntWires { bits: right_bits },
+        )
+    }
+
+    pub fn truncate(mut self, new_len: usize) -> Self {
+        self.bits.truncate(new_len);
+        self
     }
 
     pub fn get_wire_bits_fn(&self, u: &BigUint) -> Result<impl Fn(WireId) -> Option<bool>, Error> {
@@ -100,5 +132,11 @@ impl BigIntWires {
             .collect::<HashMap<WireId, bool>>();
 
         Ok(move |wire_id| mapping.get(&wire_id).copied())
+    }
+}
+
+impl AsRef<[WireId]> for BigIntWires {
+    fn as_ref(&self) -> &[WireId] {
+        self.bits.as_ref()
     }
 }
