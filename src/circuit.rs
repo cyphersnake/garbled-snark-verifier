@@ -16,7 +16,7 @@ pub enum CircuitError {
     GarblingFailed(String),
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct Circuit {
     pub num_wire: usize,
     pub input_wires: Vec<WireId>,
@@ -24,7 +24,26 @@ pub struct Circuit {
     pub gates: Vec<Gate>,
 }
 
+impl Default for Circuit {
+    fn default() -> Self {
+        Self {
+            num_wire: 2,
+            input_wires: Default::default(),
+            output_wires: Default::default(),
+            gates: Default::default(),
+        }
+    }
+}
+
 impl Circuit {
+    pub fn get_false_wire_constant(&self) -> WireId {
+        WireId(0)
+    }
+
+    pub fn get_true_wire_constant(&self) -> WireId {
+        WireId(1)
+    }
+
     pub fn issue_wire(&mut self) -> WireId {
         let new = WireId(self.num_wire);
         self.num_wire += 1;
@@ -209,19 +228,30 @@ impl GarbledCircuit {
         );
         let mut evaluated = vec![Option::<EvaluatedWire>::None; self.structure.num_wire];
 
-        self.structure.input_wires.iter().try_for_each(|wire_id| {
-            let value = (get_input)(*wire_id).ok_or(Error::LostInput(*wire_id))?;
-            let wire = self.wires.get(*wire_id)?;
-            let active_label = wire.select(value);
+        let true_wire = self.structure.get_true_wire_constant();
+        let false_wire = self.structure.get_false_wire_constant();
 
-            log::debug!("evaluate: input {wire_id}={value} label={active_label:?}");
+        [true_wire, false_wire]
+            .iter()
+            .chain(self.structure.input_wires.iter())
+            .copied()
+            .try_for_each(|wire_id| {
+                let value = match wire_id {
+                    w if w.eq(&true_wire) => true,
+                    w if w.eq(&false_wire) => false,
+                    w => (get_input)(w).ok_or(Error::LostInput(wire_id))?,
+                };
+                let wire = self.wires.get(wire_id)?;
+                let active_label = wire.select(value);
 
-            evaluated[wire_id.0] = Some(EvaluatedWire {
-                active_label,
-                value,
-            });
-            Result::<_, Error>::Ok(())
-        })?;
+                log::debug!("evaluate: input {wire_id}={value} label={active_label:?}");
+
+                evaluated[wire_id.0] = Some(EvaluatedWire {
+                    active_label,
+                    value,
+                });
+                Result::<_, Error>::Ok(())
+            })?;
 
         for gate in self.structure.gates.iter() {
             let a = evaluated
