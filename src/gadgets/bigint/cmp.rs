@@ -3,7 +3,7 @@ use num_bigint::BigUint;
 use super::BigIntWires;
 use crate::{gadgets::bigint::bits_from_biguint_with_len, Circuit, Gate, WireId};
 
-pub fn self_or_zero_generic(circuit: &mut Circuit, a: &BigIntWires, s: WireId) -> BigIntWires {
+pub fn self_or_zero(circuit: &mut Circuit, a: &BigIntWires, s: WireId) -> BigIntWires {
     BigIntWires {
         bits: a
             .iter()
@@ -17,14 +17,17 @@ pub fn self_or_zero_generic(circuit: &mut Circuit, a: &BigIntWires, s: WireId) -
 }
 
 //s is inverted
-pub fn self_or_zero_inv_generic(circuit: &mut Circuit, a: &[WireId], s: WireId) -> Vec<WireId> {
-    a.iter()
-        .map(|a_i| {
-            let w = circuit.issue_wire();
-            circuit.add_gate(Gate::and_variant(*a_i, s, w, [false, true, false]));
-            w
-        })
-        .collect()
+pub fn self_or_zero_inv(circuit: &mut Circuit, a: &BigIntWires, s: WireId) -> BigIntWires {
+    BigIntWires {
+        bits: a
+            .iter()
+            .map(|a_i| {
+                let w = circuit.issue_wire();
+                circuit.add_gate(Gate::and_variant(*a_i, s, w, [false, true, false]));
+                w
+            })
+            .collect(),
+    }
 }
 
 pub fn equal(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> WireId {
@@ -120,7 +123,7 @@ pub fn less_than_constant(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint) -
             .collect(),
     };
 
-    let sum = super::add_constant_generic(circuit, &not_a, b);
+    let sum = super::add_constant(circuit, &not_a, b);
     sum.last().unwrap()
 }
 

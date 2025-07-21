@@ -21,7 +21,13 @@ pub fn add_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> B
     BigIntWires { bits }
 }
 
-pub fn add_constant_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint) -> BigIntWires {
+pub fn add_without_carry(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
+    let mut c = add_generic(circuit, a, b);
+    c.pop();
+    c
+}
+
+pub fn add_constant(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint) -> BigIntWires {
     assert_ne!(b, &BigUint::ZERO);
     let b_bits = super::bits_from_biguint_with_len(b, a.len()).unwrap();
 
@@ -59,6 +65,16 @@ pub fn add_constant_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigUint)
 
     bits.push(carry.unwrap());
     BigIntWires { bits }
+}
+
+pub fn add_constant_without_carry(
+    circuit: &mut Circuit,
+    a: &BigIntWires,
+    b: &BigUint,
+) -> BigIntWires {
+    let mut c = add_constant(circuit, a, b);
+    c.pop();
+    c
 }
 
 pub fn sub_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
@@ -138,7 +154,7 @@ pub fn half(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
     }
 }
 
-pub fn odd_part(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
+pub fn odd_part(circuit: &mut Circuit, a: &BigIntWires) -> (BigIntWires, BigIntWires) {
     let mut select_bn = BigIntWires::new(circuit, a.len() - 1, false, false);
     select_bn.insert(0, a.get(0).unwrap());
 
@@ -169,10 +185,7 @@ pub fn odd_part(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
         odd_acc = select(circuit, &odd_acc, &half_res, select_bn.get(i).unwrap());
     }
 
-    let mut bits = odd_acc.bits.clone();
-    bits.extend_from_slice(&k.bits);
-
-    BigIntWires { bits }
+    (odd_acc, k)
 }
 
 #[cfg(test)]
@@ -266,27 +279,27 @@ mod tests {
 
     #[test]
     fn test_add_constant_generic_basic() {
-        test_constant_operation(NUM_BITS, 5, 3, 8, add_constant_generic);
+        test_constant_operation(NUM_BITS, 5, 3, 8, add_constant);
     }
 
     #[test]
     fn test_add_constant_generic_with_carry() {
-        test_constant_operation(NUM_BITS, 7, 9, 16, add_constant_generic);
+        test_constant_operation(NUM_BITS, 7, 9, 16, add_constant);
     }
 
     #[test]
     fn test_add_constant_generic_max_plus_one() {
-        test_constant_operation(NUM_BITS, 15, 1, 16, add_constant_generic);
+        test_constant_operation(NUM_BITS, 15, 1, 16, add_constant);
     }
 
     #[test]
     fn test_add_constant_generic_zero_one() {
-        test_constant_operation(NUM_BITS, 0, 1, 1, add_constant_generic);
+        test_constant_operation(NUM_BITS, 0, 1, 1, add_constant);
     }
 
     #[test]
     fn test_add_constant_generic_one_one() {
-        test_constant_operation(NUM_BITS, 1, 1, 2, add_constant_generic);
+        test_constant_operation(NUM_BITS, 1, 1, 2, add_constant);
     }
 
     #[test]

@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
-use ark_ff::AdditiveGroup;
-use num_bigint::BigUint;
+use ark_ff::{AdditiveGroup, Field, PrimeField};
+use num_bigint::{BigInt, BigUint};
 use num_traits::{One, Zero};
 
 use super::super::bigint::{self, BigIntWires};
-use crate::{math::montgomery::calculate_montgomery_constants, Circuit, Gate};
+use crate::{math::montgomery::calculate_montgomery_constants, Circuit, Gate, WireId};
 
 /// Core trait for BN254 field implementation with 254-bit prime field arithmetic
 /// Provides constants and operations for field elements in Montgomery form
@@ -78,6 +78,10 @@ pub trait Fp254Impl {
         r_inv_calc == r_inv_expected && m_inv_calc == m_inv_expected
     }
 
+    fn equal_constant(circuit: &mut Circuit, a: &BigIntWires, b: &ark_bn254::Fq) -> WireId {
+        bigint::equal_constant(circuit, a, &BigUint::from(b.into_bigint()))
+    }
+
     fn add(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
         assert_eq!(a.len(), Self::N_BITS);
         assert_eq!(b.len(), Self::N_BITS);
@@ -85,8 +89,7 @@ pub trait Fp254Impl {
         let mut wires1 = bigint::add_generic(circuit, a, b);
         let u = wires1.pop().unwrap();
 
-        let mut wires2 =
-            bigint::add_constant_generic(circuit, &wires1, &Self::not_modulus_as_biguint());
+        let mut wires2 = bigint::add_constant(circuit, &wires1, &Self::not_modulus_as_biguint());
 
         wires2.pop();
 
@@ -104,10 +107,9 @@ pub trait Fp254Impl {
             return a.clone();
         }
 
-        let mut wires_1 = bigint::add_constant_generic(circuit, a, &BigUint::from(*b));
+        let mut wires_1 = bigint::add_constant(circuit, a, &BigUint::from(*b));
         let u = wires_1.pop().unwrap();
-        let mut wires_2 =
-            bigint::add_constant_generic(circuit, &wires_1, &Self::not_modulus_as_biguint());
+        let mut wires_2 = bigint::add_constant(circuit, &wires_1, &Self::not_modulus_as_biguint());
 
         wires_2.pop();
 
@@ -156,7 +158,7 @@ pub trait Fp254Impl {
         shifted_a.insert(0, shift_wire);
 
         let mut wires_2 =
-            bigint::add_constant_generic(circuit, &shifted_a, &Self::not_modulus_as_biguint());
+            bigint::add_constant(circuit, &shifted_a, &Self::not_modulus_as_biguint());
         wires_2.pop();
 
         let v = bigint::less_than_constant(circuit, &shifted_a, &Self::modulus_as_biguint());
@@ -173,7 +175,7 @@ pub trait Fp254Impl {
 
         let selector = a.get(0).unwrap();
         let wires_1 = bigint::half(circuit, a);
-        let wires_2 = bigint::add_constant_generic(circuit, &wires_1, &Self::half_modulus());
+        let wires_2 = bigint::add_constant(circuit, &wires_1, &Self::half_modulus());
 
         bigint::select(circuit, &wires_2, &wires_1, selector)
     }
@@ -185,6 +187,30 @@ pub trait Fp254Impl {
 
         let mul_result = bigint::mul_karatsuba_generic(circuit, a, b);
         Self::montgomery_reduce(circuit, &mul_result)
+    }
+
+    fn as_montgomery(a: ark_bn254::Fq) -> ark_bn254::Fq {
+        a * ark_bn254::Fq::from(Self::montgomery_r_as_biguint())
+    }
+
+    fn mul_by_constant_montgomery(
+        circuit: &mut Circuit,
+        a: &BigIntWires,
+        b: &ark_bn254::Fq,
+    ) -> BigIntWires {
+        assert_eq!(a.len(), Self::N_BITS);
+
+        if b == &ark_bn254::Fq::ZERO {
+            return BigIntWires::new_constant(circuit, a.len(), &BigUint::zero()).unwrap();
+        }
+
+        if b == &Self::as_montgomery(ark_bn254::Fq::ONE) {
+            return a.clone();
+        }
+
+        let mul_circuit = bigint::mul_by_constant(circuit, a, &b.into_bigint().into());
+
+        Self::montgomery_reduce(circuit, &mul_circuit)
     }
 
     /// Montgomery squaring: (a * a * R^-1) mod p
@@ -215,8 +241,7 @@ pub trait Fp254Impl {
         let modulus_as_biguint =
             BigIntWires::new_constant(circuit, x.len(), &Self::modulus_as_biguint()).unwrap();
 
-        let subtract_if_too_much =
-            bigint::self_or_zero_generic(circuit, &modulus_as_biguint, bound_check);
+        let subtract_if_too_much = bigint::self_or_zero(circuit, &modulus_as_biguint, bound_check);
 
         let new_sub = bigint::sub_generic_without_borrow(circuit, &sub, &subtract_if_too_much);
 
@@ -227,188 +252,172 @@ pub trait Fp254Impl {
     fn inverse(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
         assert_eq!(a.len(), Self::N_BITS);
 
-        let wires_1 = circuit.extend(bigint::odd_part(a.clone()));
-        let odd_part = wires_1[0..Self::N_BITS].to_vec();
-        let mut even_part = wires_1[Self::N_BITS..2 * Self::N_BITS].to_vec();
+        let (odd_part, mut even_part) = bigint::odd_part(circuit, a);
 
         // initialize value for wires
-        let neg_odd_part = circuit.extend(Self::neg(odd_part.clone()));
-        let mut u = circuit.extend(U254::half(neg_odd_part));
+        let neg_odd_part = Self::neg(circuit, &odd_part);
+        let mut u = bigint::half(circuit, &neg_odd_part);
         let mut v = odd_part;
-        let mut k = Fq::wires_set(ark_bn254::Fq::ONE);
-        let mut r = Fq::wires_set(ark_bn254::Fq::ONE);
-        let mut s = Fq::wires_set(ark_bn254::Fq::from(2));
+        let mut k = BigIntWires::new_constant(circuit, a.len(), &BigUint::from(ark_bn254::Fq::ONE))
+            .unwrap();
+        let mut r = BigIntWires::new_constant(circuit, a.len(), &BigUint::from(ark_bn254::Fq::ONE))
+            .unwrap();
+        let mut s = BigIntWires::new_constant(
+            circuit,
+            a.len(),
+            &BigUint::from(ark_bn254::Fq::ONE + ark_bn254::Fq::ONE),
+        )
+        .unwrap();
 
         for _ in 0..2 * Self::N_BITS {
-            let not_x1 = u[0].clone();
-            let not_x2 = v[0].clone();
+            let not_x1 = u.get(0).unwrap();
+            let not_x2 = v.get(0).unwrap();
+
             //let x1 = new_wirex();
             //let x2 = new_wirex();
             //circuit.add(Gate::not(x1x.clone(), x1.clone()));
             //circuit.add(Gate::not(x2x.clone(), x2.clone()));
-            let x3 = circuit.extend(U254::greater_than(u.clone(), v.clone()))[0].clone();
+            let x3 = bigint::greater_than(circuit, &u, &v);
 
             //let p1 = x1.clone();
             //let not_x1 = new_wirex();
             //circuit.add(Gate::not(x1.clone(), not_x1.clone()));
-            let p2 = new_wirex();
-            circuit.add(Gate::and_variant(
-                not_x1.clone(),
-                not_x2.clone(),
-                p2.clone(),
-                [0, 1, 0],
-            ));
-            let p3 = new_wirex();
+            let p2 = circuit.issue_wire();
+            circuit.add_gate(Gate::and_variant(not_x1, not_x2, p2, [false, true, false]));
+            let p3 = circuit.issue_wire();
             //let not_x2 = new_wirex();
             //circuit.add(Gate::not(x2, not_x2.clone()));
-            let wires_2 = new_wirex();
-            circuit.add(Gate::and(not_x1.clone(), not_x2.clone(), wires_2.clone()));
-            circuit.add(Gate::and(wires_2.clone(), x3.clone(), p3.clone()));
-            let p4 = new_wirex();
-            let not_x3 = new_wirex();
-            circuit.add(Gate::not(x3.clone(), not_x3.clone()));
-            circuit.add(Gate::and(wires_2, not_x3, p4.clone()));
+            let wires_2 = circuit.issue_wire();
+            circuit.add_gate(Gate::and(not_x1, not_x2, wires_2));
+            circuit.add_gate(Gate::and(wires_2, x3, p3));
+            let p4 = circuit.issue_wire();
+            circuit.add_gate(Gate::nimp(wires_2, x3, p4));
 
             //part1
-            let u1 = circuit.extend(U254::half(u.clone()));
+            let u1 = bigint::half(circuit, &u);
             let v1 = v.clone();
             let r1 = r.clone();
-            let s1 = circuit.extend(U254::double_without_overflow(s.clone()));
-            let k1 = circuit.extend(U254::add_constant_without_carry(
-                k.clone(),
-                &BigUint::from_str("1").unwrap(),
-            ));
+            let s1 = bigint::double_without_overflow(circuit, &s);
+            let k1 =
+                bigint::add_constant_without_carry(circuit, &k, &BigUint::from_str("1").unwrap());
 
             // part2
             let u2 = u.clone();
-            let v2 = circuit.extend(U254::half(v.clone()));
-            let r2 = circuit.extend(U254::double_without_overflow(r.clone()));
+            let v2 = bigint::half(circuit, &v);
+            let r2 = bigint::double_without_overflow(circuit, &r);
             let s2 = s.clone();
-            let k2 = circuit.extend(U254::add_constant_without_carry(
-                k.clone(),
-                &BigUint::from_str("1").unwrap(),
-            ));
+            let k2 = bigint::add_constant_without_carry(circuit, &k, &BigUint::one());
 
             // part3
-            let u3 = circuit.extend(U254::sub_without_borrow(u1.clone(), v2.clone()));
+            let u3 = bigint::sub_generic_without_borrow(circuit, &u1, &v2);
             let v3 = v.clone();
-            let r3 = circuit.extend(U254::add_without_carry(r.clone(), s.clone()));
-            let s3 = circuit.extend(U254::double_without_overflow(s.clone()));
-            let k3 = circuit.extend(U254::add_constant_without_carry(
-                k.clone(),
-                &BigUint::from_str("1").unwrap(),
-            ));
+            let r3 = bigint::add_without_carry(circuit, &r, &s);
+            let s3 = bigint::double_without_overflow(circuit, &s);
+            let k3 = bigint::add_constant_without_carry(circuit, &k, &BigUint::one());
 
             // part4
             let u4 = u.clone();
-            let v4 = circuit.extend(U254::sub_without_borrow(v2.clone(), u1.clone()));
-            let r4 = circuit.extend(U254::double_without_overflow(r.clone()));
-            let s4 = circuit.extend(U254::add_without_carry(r.clone(), s.clone()));
-            let k4 = circuit.extend(U254::add_constant_without_carry(
-                k.clone(),
-                &BigUint::from_str("1").unwrap(),
-            ));
+            let v4 = bigint::sub_generic_without_borrow(circuit, &v2, &u1);
+            let r4 = bigint::double_without_overflow(circuit, &r);
+            let s4 = bigint::add_without_carry(circuit, &r, &s);
+            let k4 = bigint::add_constant_without_carry(circuit, &k, &BigUint::one());
 
             // calculate new u
-            let wire_u_1 = circuit.extend(U254::self_or_zero_inv(u1.clone(), not_x1.clone()));
-            let wire_u_2 = circuit.extend(U254::self_or_zero(u2.clone(), p2.clone()));
-            let wire_u_3 = circuit.extend(U254::self_or_zero(u3.clone(), p3.clone()));
-            let wire_u_4 = circuit.extend(U254::self_or_zero(u4.clone(), p4.clone()));
+            let wire_u_1 = bigint::self_or_zero_inv(circuit, &u1, not_x1);
+            let wire_u_2 = bigint::self_or_zero(circuit, &u2, p2);
+            let wire_u_3 = bigint::self_or_zero(circuit, &u3, p3);
+            let wire_u_4 = bigint::self_or_zero(circuit, &u4, p4);
 
-            let add_u_1 = circuit.extend(U254::add_without_carry(wire_u_1, wire_u_2));
-            let add_u_2 = circuit.extend(U254::add_without_carry(add_u_1, wire_u_3));
-            let new_u = circuit.extend(U254::add_without_carry(add_u_2, wire_u_4));
+            let add_u_1 = bigint::add_without_carry(circuit, &wire_u_1, &wire_u_2);
+            let add_u_2 = bigint::add_without_carry(circuit, &add_u_1, &wire_u_3);
+            let new_u = bigint::add_without_carry(circuit, &add_u_2, &wire_u_4);
 
             // calculate new v
-            let wire_v_1 = circuit.extend(U254::self_or_zero_inv(v1.clone(), not_x1.clone()));
-            let wire_v_2 = circuit.extend(U254::self_or_zero(v2.clone(), p2.clone()));
-            let wire_v_3 = circuit.extend(U254::self_or_zero(v3.clone(), p3.clone()));
-            let wire_v_4 = circuit.extend(U254::self_or_zero(v4.clone(), p4.clone()));
+            let wire_v_1 = bigint::self_or_zero_inv(circuit, &v1, not_x1);
+            let wire_v_2 = bigint::self_or_zero(circuit, &v2, p2);
+            let wire_v_3 = bigint::self_or_zero(circuit, &v3, p3);
+            let wire_v_4 = bigint::self_or_zero(circuit, &v4, p4);
 
-            let add_v_1 = circuit.extend(U254::add_without_carry(wire_v_1, wire_v_2));
-            let add_v_2 = circuit.extend(U254::add_without_carry(add_v_1, wire_v_3));
-            let new_v = circuit.extend(U254::add_without_carry(add_v_2, wire_v_4));
+            let add_v_1 = bigint::add_without_carry(circuit, &wire_v_1, &wire_v_2);
+            let add_v_2 = bigint::add_without_carry(circuit, &add_v_1, &wire_v_3);
+            let new_v = bigint::add_without_carry(circuit, &add_v_2, &wire_v_4);
 
             // calculate new r
-            let wire_r_1 = circuit.extend(U254::self_or_zero_inv(r1.clone(), not_x1.clone()));
-            let wire_r_2 = circuit.extend(U254::self_or_zero(r2.clone(), p2.clone()));
-            let wire_r_3 = circuit.extend(U254::self_or_zero(r3.clone(), p3.clone()));
-            let wire_r_4 = circuit.extend(U254::self_or_zero(r4.clone(), p4.clone()));
+            let wire_r_1 = bigint::self_or_zero_inv(circuit, &r1, not_x1);
+            let wire_r_2 = bigint::self_or_zero(circuit, &r2, p2);
+            let wire_r_3 = bigint::self_or_zero(circuit, &r3, p3);
+            let wire_r_4 = bigint::self_or_zero(circuit, &r4, p4);
 
-            let add_r_1 = circuit.extend(U254::add_without_carry(wire_r_1, wire_r_2));
-            let add_r_2 = circuit.extend(U254::add_without_carry(add_r_1, wire_r_3));
-            let new_r = circuit.extend(U254::add_without_carry(add_r_2, wire_r_4));
+            let add_r_1 = bigint::add_without_carry(circuit, &wire_r_1, &wire_r_2);
+            let add_r_2 = bigint::add_without_carry(circuit, &add_r_1, &wire_r_3);
+            let new_r = bigint::add_without_carry(circuit, &add_r_2, &wire_r_4);
 
             // calculate new s
-            let wire_s_1 = circuit.extend(U254::self_or_zero_inv(s1.clone(), not_x1.clone()));
-            let wire_s_2 = circuit.extend(U254::self_or_zero(s2.clone(), p2.clone()));
-            let wire_s_3 = circuit.extend(U254::self_or_zero(s3.clone(), p3.clone()));
-            let wire_s_4 = circuit.extend(U254::self_or_zero(s4.clone(), p4.clone()));
+            let wire_s_1 = bigint::self_or_zero_inv(circuit, &s1, not_x1);
+            let wire_s_2 = bigint::self_or_zero(circuit, &s2, p2);
+            let wire_s_3 = bigint::self_or_zero(circuit, &s3, p3);
+            let wire_s_4 = bigint::self_or_zero(circuit, &s4, p4);
 
-            let add_s_1 = circuit.extend(U254::add_without_carry(wire_s_1, wire_s_2));
-            let add_s_2 = circuit.extend(U254::add_without_carry(add_s_1, wire_s_3));
-            let new_s = circuit.extend(U254::add_without_carry(add_s_2, wire_s_4));
+            let add_s_1 = bigint::add_without_carry(circuit, &wire_s_1, &wire_s_2);
+            let add_s_2 = bigint::add_without_carry(circuit, &add_s_1, &wire_s_3);
+            let new_s = bigint::add_without_carry(circuit, &add_s_2, &wire_s_4);
 
             // calculate new k
-            let wire_k_1 = circuit.extend(U254::self_or_zero_inv(k1.clone(), not_x1.clone()));
-            let wire_k_2 = circuit.extend(U254::self_or_zero(k2.clone(), p2.clone()));
-            let wire_k_3 = circuit.extend(U254::self_or_zero(k3.clone(), p3.clone()));
-            let wire_k_4 = circuit.extend(U254::self_or_zero(k4.clone(), p4.clone()));
+            let wire_k_1 = bigint::self_or_zero_inv(circuit, &k1, not_x1);
+            let wire_k_2 = bigint::self_or_zero(circuit, &k2, p2);
+            let wire_k_3 = bigint::self_or_zero(circuit, &k3, p3);
+            let wire_k_4 = bigint::self_or_zero(circuit, &k4, p4);
 
-            let add_k_1 = circuit.extend(U254::add_without_carry(wire_k_1, wire_k_2));
-            let add_k_2 = circuit.extend(U254::add_without_carry(add_k_1, wire_k_3));
-            let new_k = circuit.extend(U254::add_without_carry(add_k_2, wire_k_4));
+            let add_k_1 = bigint::add_without_carry(circuit, &wire_k_1, &wire_k_2);
+            let add_k_2 = bigint::add_without_carry(circuit, &add_k_1, &wire_k_3);
+            let new_k = bigint::add_without_carry(circuit, &add_k_2, &wire_k_4);
 
             // set new values
 
-            let v_equals_one = circuit.extend(U254::equal_constant(
-                v.clone(),
-                &BigUint::from_str("1").unwrap(),
-            ))[0]
-                .clone();
-            u = circuit.extend(U254::select(u, new_u, v_equals_one.clone()));
-            v = circuit.extend(U254::select(v.clone(), new_v, v_equals_one.clone()));
-            r = circuit.extend(U254::select(r, new_r, v_equals_one.clone()));
-            s = circuit.extend(U254::select(s.clone(), new_s, v_equals_one.clone()));
-            k = circuit.extend(U254::select(k, new_k, v_equals_one.clone()));
+            let v_equals_one = bigint::equal_constant(circuit, &v, &BigUint::one());
+
+            u = bigint::select(circuit, &u, &new_u, v_equals_one);
+            v = bigint::select(circuit, &v, &new_v, v_equals_one);
+            r = bigint::select(circuit, &r, &new_r, v_equals_one);
+            s = bigint::select(circuit, &s, &new_s, v_equals_one);
+            k = bigint::select(circuit, &k, &new_k, v_equals_one);
         }
 
         // divide result by even part
         for _ in 0..Self::N_BITS {
-            let updated_s = circuit.extend(Self::half(s.clone()));
-            let updated_even_part = circuit.extend(Self::half(even_part.clone()));
-            let selector = circuit
-                .extend(Self::equal_constant(even_part.clone(), ark_bn254::Fq::ONE))[0]
-                .clone();
-            s = circuit.extend(U254::select(s.clone(), updated_s, selector.clone()));
-            even_part =
-                circuit.extend(U254::select(even_part, updated_even_part, selector.clone()));
+            let updated_s = bigint::half(circuit, &s);
+            let updated_even_part = bigint::half(circuit, &even_part);
+
+            let selector = bigint::equal_constant(circuit, &even_part, &BigUint::one());
+
+            s = bigint::select(circuit, &s, &updated_s, selector);
+            even_part = bigint::select(circuit, &even_part, &updated_even_part, selector);
         }
 
         // divide result by 2^k
         for _ in 0..2 * Self::N_BITS {
-            let updated_s = circuit.extend(Self::half(s.clone()));
-            let updated_k = circuit.extend(Self::add_constant(k.clone(), ark_bn254::Fq::from(-1)));
-            let selector = circuit.extend(Self::equal_constant(k.clone(), ark_bn254::Fq::ZERO));
-            s = circuit.extend(U254::select(s, updated_s, selector[0].clone()));
-            k = circuit.extend(U254::select(k, updated_k, selector[0].clone()));
+            let updated_s = bigint::half(circuit, &s);
+            let updated_k = Self::add_constant(circuit, &k, &ark_bn254::Fq::from(-1));
+
+            let selector = Self::equal_constant(circuit, &k, &ark_bn254::Fq::ZERO);
+
+            s = bigint::select(circuit, &s, &updated_s, selector);
+            k = bigint::select(circuit, &k, &updated_k, selector);
         }
-        circuit.add_wires(s.clone());
-        circuit
+
+        s
     }
 
     /// Modular inverse in Montgomery form
-    fn inverse_montgomery(_circuit: &mut Circuit, _a: &BigIntWires) -> BigIntWires {
-        todo!()
-        //assert_eq!(a.len(), Self::N_BITS);
+    fn inverse_montgomery(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
+        let b = Self::inverse(circuit, &a);
 
-        //let b = Self::inverse(circuit, a);
-        //let r_squared = Self::montgomery_r_as_biguint()
-        //    * Self::montgomery_r_as_biguint()
-        //    * Self::montgomery_r_as_biguint();
-        //let constant = ark_bn254::Fq::from(r_squared % Self::modulus_as_biguint());
-
-        //bigint::mul_by_constant_montgomery_generic(circuit, &b, &BigUint::from(constant))
+        Self::mul_by_constant_montgomery(
+            circuit,
+            &b,
+            &(ark_bn254::Fq::from(Fq::montgomery_r_as_biguint()).square()
+                * ark_bn254::Fq::from(Fq::montgomery_r_as_biguint())),
+        )
     }
 
     /// Exponentiation by constant in Montgomery form
