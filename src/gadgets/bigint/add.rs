@@ -1,6 +1,6 @@
 use std::iter;
 
-use super::{BigIntWires, BigUint};
+use super::{select, BigIntWires, BigUint};
 use crate::{Circuit, Gate, WireId};
 
 pub fn add_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
@@ -138,37 +138,42 @@ pub fn half(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
     }
 }
 
-//pub fn odd_part(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
-//    let n_bits = a.len();
-//    let mut select = BigIntWires::new(circuit, a.len(), false, false);
-//
-//    select.bits[0] = a.bits[0];
-//    for i in 1..n_bits {
-//        circuit.add_gate(Gate::or(select.bits[i - 1], a.bits[i], select.bits[i]));
-//    }
-//
-//    let mut k = BigIntWires::new(circuit, a.len(), false, false);
-//    k.bits[0] = a.bits[0].clone();
-//    for i in 1..n_bits {
-//        circuit.add_gate(Gate::and_variant(
-//            select.bits[i - 1].clone(),
-//            a.bits[i].clone(),
-//            k.bits[i].clone(),
-//            [true, false, false],
-//        ));
-//    }
-//
-//    let mut results = Vec::new();
-//    results.push(a);
-//    for i in 0..n_bits {
-//        let half_result = half(circuit, results[i]);
-//        let result = select(circuit, results[i], half_result, select.bits[i].clone());
-//        results.push(result);
-//    }
-//    circuit.add_wires(results[N_BITS].clone());
-//    circuit.add_wires(k.clone());
-//    circuit
-//}
+pub fn odd_part(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
+    let mut select_bn = BigIntWires::new(circuit, a.len() - 1, false, false);
+    select_bn.insert(0, a.get(0).unwrap());
+
+    for i in 1..a.len() {
+        circuit.add_gate(Gate::or(
+            select_bn.get(i - 1).unwrap(),
+            a.get(i).unwrap(),
+            select_bn.get(i).unwrap(),
+        ));
+    }
+
+    let mut k = BigIntWires::new(circuit, a.len() - 1, false, false);
+    k.insert(0, a.get(0).unwrap());
+
+    for i in 1..a.len() {
+        circuit.add_gate(Gate::and_variant(
+            select_bn.get(i - 1).unwrap(),
+            a.get(i).unwrap(),
+            k.get(i).unwrap(),
+            [true, false, false],
+        ));
+    }
+
+    let mut odd_acc = a.clone(); // needs `Clone` on BigIntWires
+
+    for i in 1..a.len() {
+        let half_res = half(circuit, &odd_acc);
+        odd_acc = select(circuit, &odd_acc, &half_res, select_bn.get(i).unwrap());
+    }
+
+    let mut bits = odd_acc.bits.clone();
+    bits.extend_from_slice(&k.bits);
+
+    BigIntWires { bits }
+}
 
 #[cfg(test)]
 mod tests {
