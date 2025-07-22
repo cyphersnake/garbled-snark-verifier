@@ -5,8 +5,8 @@ use digest::Digest;
 /// Generic hash function with unique tweak per gate using any digest implementation
 fn aes_hash<D: Digest + Default>(x: &S, tweak: GateId) -> S {
     let result = D::default()
-        .chain_update(&x.0)
-        .chain_update(&tweak.to_le_bytes())
+        .chain_update(x.0)
+        .chain_update(tweak.to_le_bytes())
         .finalize();
     
     let mut bytes = [0u8; 32];

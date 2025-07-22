@@ -6,7 +6,6 @@ use crate::{
     core::{gate::CorrectnessError, gate_type::GateCount},
     Delta, EvaluatedWire, GarbledWire, GarbledWires, Gate, GateError, WireError, WireId, S,
 };
-use digest;
 
 type DefaultHasher = blake3::Hasher;
 
