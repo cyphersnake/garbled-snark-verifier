@@ -25,44 +25,14 @@ pub(super) fn garble(
 ) -> (S, S) {
     let (alpha_a, alpha_b, alpha_c) = gate_type.alphas();
 
-    let pb = perm_bit(&b.select(false));
-    let pa = perm_bit(&a.select(false));
+    let h_a0 = aes_hash(&a.select(false), gate_id);
+    let h_a1 = aes_hash(&a.select(true), gate_id);
 
-    // pre-compute both right-hashes
-    let (ciphertext_evaluator, c_label_evaluator) = {
-        let h_b0 = aes_hash(&b.select(false), gate_id);
-        let h_b1 = aes_hash(&b.select(true), gate_id);
+    let ct = h_a0 ^ &h_a1 ^ &b.select(alpha_b);
 
-        // Wa^{αa}
-        let w_a_alpha = a.select(alpha_a);
+    let w = if alpha_c { h_a0 ^ delta } else { h_a0 };
 
-        let ct = h_b0 ^ &h_b1 ^ &w_a_alpha;
-
-        let mut w = if pb { h_b1 } else { h_b0 };
-        if (gate_type.f())(pa, pb) {
-            w ^= delta;
-        };
-
-        (ct, w)
-    };
-
-    //let (ciphertext_garbler, c_label_garbler) = {
-    //    let h_a0 = aes_hash(&a.select(false), gate_id);
-    //    let h_a1 = aes_hash(&a.select(true), gate_id);
-    //    let ct = if pb ^ alpha_a {
-    //        h_a0 ^ &h_a1 ^ delta
-    //    } else {
-    //        h_a0 ^ &h_a1
-    //    };
-    //    let h_a = if pa { h_a1 } else { h_a0 };
-    //    let w = match (gate_type.f())(pa, pb) {
-    //        true => h_a ^ delta,
-    //        false => h_a,
-    //    };
-    //    (ct, w)
-    //};
-
-    (ciphertext_evaluator, c_label_evaluator)
+    (ct, w)
 }
 
 pub(super) fn degarble(
@@ -72,14 +42,12 @@ pub(super) fn degarble(
     a: &EvaluatedWire,
     b: &EvaluatedWire,
 ) -> S {
-    let h_b = aes_hash(&b.active_label, gate_id);
+    let h_a = aes_hash(&a.active_label, gate_id);
 
-    let (alpha_a, alpha_b, alpha_c) = gate_type.alphas();
-
-    if perm_bit(&b.active_label) {
-        h_b ^ ciphertext ^ &a.active_label
+    if a.value() {
+        ciphertext ^ &h_a ^ &b.active_label
     } else {
-        h_b
+        h_a // h_a0
     }
 }
 
