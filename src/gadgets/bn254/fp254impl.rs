@@ -410,7 +410,7 @@ pub trait Fp254Impl {
 
     /// Modular inverse in Montgomery form
     fn inverse_montgomery(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
-        let b = Self::inverse(circuit, &a);
+        let b = Self::inverse(circuit, a);
 
         Self::mul_by_constant_montgomery(
             circuit,
