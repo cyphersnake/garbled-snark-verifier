@@ -1,8 +1,8 @@
 use std::iter;
 
 use crate::{
-    core::gate::CorrectnessError, Delta, EvaluatedWire, GarbledWire, GarbledWires, Gate, GateError,
-    WireError, WireId, S,
+    core::{gate::CorrectnessError, gate_type::GateCount},
+    Delta, EvaluatedWire, GarbledWire, GarbledWires, Gate, GateError, WireError, WireId, S,
 };
 
 /// Errors that can occur during circuit operations
@@ -22,6 +22,7 @@ pub struct Circuit {
     pub input_wires: Vec<WireId>,
     pub output_wires: Vec<WireId>,
     pub gates: Vec<Gate>,
+    pub gate_count: GateCount,
 }
 
 impl Default for Circuit {
@@ -31,6 +32,7 @@ impl Default for Circuit {
             input_wires: Default::default(),
             output_wires: Default::default(),
             gates: Default::default(),
+            gate_count: GateCount::default(),
         }
     }
 }
@@ -77,6 +79,7 @@ impl Circuit {
     }
 
     pub fn add_gate(&mut self, gate: Gate) {
+        self.gate_count.handle(gate.gate_type);
         self.gates.push(gate);
     }
 

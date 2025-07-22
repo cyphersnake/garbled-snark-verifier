@@ -239,7 +239,7 @@ pub trait Fp254Impl {
         let bound_check = bigint::greater_than(circuit, &sub, &x_high);
 
         let modulus_as_biguint =
-            BigIntWires::new_constant(circuit, x.len(), &Self::modulus_as_biguint()).unwrap();
+            BigIntWires::new_constant(circuit, x_high.len(), &Self::modulus_as_biguint()).unwrap();
 
         let subtract_if_too_much = bigint::self_or_zero(circuit, &modulus_as_biguint, bound_check);
 

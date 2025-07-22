@@ -9,9 +9,9 @@ pub enum GateType {
     Cimp = 5, // b => a
     Nor = 6,
     Or = 7,
-    Xor,
-    Xnor,
-    Not,
+    Xor = 8,
+    Xnor = 9,
+    Not = 10,
 }
 
 impl GateType {
@@ -95,6 +95,97 @@ const fn alphas(tt: u8) -> (bool, bool, bool) {
     let alpha_c = f00 ^ (alpha_a & alpha_b); // formula (2)
 
     (alpha_a, alpha_b, alpha_c)
+}
+
+const GATE_TYPE_COUNT: usize = 11;
+
+#[derive(Default)]
+pub struct GateCount(pub [u64; GATE_TYPE_COUNT]);
+
+impl GateCount {
+    pub fn handle(&mut self, gt: GateType) {
+        self.0[gt as usize] += 1;
+    }
+
+    pub fn total_gate_count(&self) -> u64 {
+        let mut sum = 0u64;
+        for x in self.0 {
+            sum += x;
+        }
+        sum
+    }
+
+    fn and_variants_count(&self) -> u64 {
+        let mut sum = 0u64;
+        for x in &self.0[0..8] {
+            sum += x;
+        }
+        sum
+    }
+
+    pub fn nonfree_gate_count(&self) -> u64 {
+        self.and_variants_count()
+    }
+
+    fn xor_variants_count(&self) -> u64 {
+        self.0[GateType::Xor as usize] + self.0[GateType::Xnor as usize]
+    }
+
+
+    pub fn and_count(&self) -> u64 {
+        self.0[GateType::And as usize]
+    }
+
+    pub fn nand_count(&self) -> u64 {
+        self.0[GateType::Nand as usize]
+    }
+
+    pub fn nimp_count(&self) -> u64 {
+        self.0[GateType::Nimp as usize]
+    }
+
+    pub fn imp_count(&self) -> u64 {
+        self.0[GateType::Imp as usize]
+    }
+
+    pub fn ncimp_count(&self) -> u64 {
+        self.0[GateType::Ncimp as usize]
+    }
+
+    pub fn cimp_count(&self) -> u64 {
+        self.0[GateType::Cimp as usize]
+    }
+
+    pub fn nor_count(&self) -> u64 {
+        self.0[GateType::Nor as usize]
+    }
+
+    pub fn or_count(&self) -> u64 {
+        self.0[GateType::Or as usize]
+    }
+
+    pub fn xor_count(&self) -> u64 {
+        self.0[GateType::Xor as usize]
+    }
+
+    pub fn xnor_count(&self) -> u64 {
+        self.0[GateType::Xnor as usize]
+    }
+
+    pub fn not_count(&self) -> u64 {
+        self.0[GateType::Not as usize]
+    }
+}
+
+impl std::fmt::Display for GateCount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{:?}", self.0)?;
+        writeln!(f, "{:<15}{:>11}", "and variants:", self.and_variants_count())?;
+        writeln!(f, "{:<15}{:>11}", "xor variants:", self.xor_variants_count())?;
+        writeln!(f, "{:<15}{:>11}", "not:", self.0[GateType::Not as usize])?;
+        writeln!(f, "{:<15}{:>11}", "total:", self.total_gate_count())?;
+        writeln!(f)
+    }
 }
 
 #[cfg(test)]
