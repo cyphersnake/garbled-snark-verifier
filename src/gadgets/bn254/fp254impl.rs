@@ -5,7 +5,7 @@ use num_bigint::{BigInt, BigUint};
 use num_traits::{One, Zero};
 
 use super::super::bigint::{self, BigIntWires};
-use crate::{math::montgomery::calculate_montgomery_constants, Circuit, Gate, WireId};
+use crate::{Circuit, Gate, WireId, math::montgomery::calculate_montgomery_constants};
 
 /// Core trait for BN254 field implementation with 254-bit prime field arithmetic
 /// Provides constants and operations for field elements in Montgomery form
@@ -273,19 +273,19 @@ pub trait Fp254Impl {
             let not_x1 = u.get(0).unwrap();
             let not_x2 = v.get(0).unwrap();
 
-            //let x1 = new_wirex();
-            //let x2 = new_wirex();
+            //let x1 = circuit.issue_wire();
+            //let x2 = circuit.issue_wire();
             //circuit.add(Gate::not(x1x.clone(), x1.clone()));
             //circuit.add(Gate::not(x2x.clone(), x2.clone()));
             let x3 = bigint::greater_than(circuit, &u, &v);
 
             //let p1 = x1.clone();
-            //let not_x1 = new_wirex();
+            //let not_x1 = circuit.issue_wire();
             //circuit.add(Gate::not(x1.clone(), not_x1.clone()));
             let p2 = circuit.issue_wire();
             circuit.add_gate(Gate::and_variant(not_x1, not_x2, p2, [false, true, false]));
             let p3 = circuit.issue_wire();
-            //let not_x2 = new_wirex();
+            //let not_x2 = circuit.issue_wire();
             //circuit.add(Gate::not(x2, not_x2.clone()));
             let wires_2 = circuit.issue_wire();
             circuit.add_gate(Gate::and(not_x1, not_x2, wires_2));
@@ -452,5 +452,65 @@ pub trait Fp254Impl {
         }
 
         result
+    }
+
+    fn div6(_circuit: &mut Circuit, _a: &BigIntWires) -> BigIntWires {
+        todo!()
+        //assert_eq!(a.len(), Self::N_BITS);
+
+        //let half = Self::half(circuit, a);
+        //let mut result = BigIntWires::new(circuit, a.len(), false, false);
+        //let mut r1 = circuit.get_false_wire_constant();
+        //let mut r2 = circuit.get_false_wire_constant();
+
+        //for i in 0..Self::N_BITS {
+        //    // msb to lsb
+        //    let j = Self::N_BITS - 1 - i;
+
+        //    // result wire
+        //    let r2_and_hj = circuit.issue_wire();
+
+        //    circuit.add_gate(Gate::and(
+        //        r2.clone(),
+        //        half.get(j).unwrap(),
+        //        r2_and_hj.clone(),
+        //    ));
+        //    let result_wire = circuit.issue_wire();
+
+        //    circuit.add_gate(Gate::or(r1.clone(), r2_and_hj.clone(), result_wire.clone()));
+
+        //    result[j] = result_wire.clone();
+
+        //    // update r1 r2 values
+        //    let not_hj = circuit.issue_wire();
+        //    let not_r2 = circuit.issue_wire();
+
+        //    circuit.add_gate(Gate::not(half[j].clone(), not_hj.clone()));
+        //    circuit.add_gate(Gate::not(r2.clone(), not_r2.clone()));
+
+        //    r1 = circuit.selector(not_r2.clone(), r2.clone(), result_wire.clone());
+        //    r2 = circuit.selector(not_hj.clone(), half[j].clone(), result_wire.clone());
+
+        //    // special case if 1 0 0 then 0 1 instead of 1 1 so we need to not r1 if 1 0 0 is the case
+        //    let not_r1 = circuit.issue_wire();
+
+        //    circuit.add_gate(Gate::not(r1.clone(), not_r1));
+
+        //    let edge_case = circuit.issue_wire();
+
+        //    circuit.add_gate(Gate::and(result_wire.clone(), not_hj, edge_case.clone()));
+
+        //    r1 = circuit.selector(not_r1.clone(), r1.clone(), edge_case);
+        //}
+        //// residue for r2
+        //let result_plus_one_third =
+        //    bigint::add_constant_without_carry(circuit, &result, &Self::one_third_modulus());
+
+        //result = bigint::select(circuit, &result_plus_one_third, &result, r2);
+        //// residue for r1
+        //let result_plus_two_third =
+        //    bigint::add_constant_without_carry(circuit, &result, &Self::two_third_modulus());
+
+        //bigint::select(circuit, &result_plus_two_third, &result, r1)
     }
 }

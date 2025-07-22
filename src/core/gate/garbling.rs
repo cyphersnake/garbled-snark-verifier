@@ -8,7 +8,7 @@ fn aes_hash<D: Digest + Default>(x: &S, tweak: GateId) -> S {
         .chain_update(x.0)
         .chain_update(tweak.to_le_bytes())
         .finalize();
-    
+
     let mut bytes = [0u8; 32];
     let result_bytes = result.as_ref();
     let copy_len = result_bytes.len().min(32);
@@ -58,7 +58,7 @@ mod tests {
     use rand::SeedableRng;
 
     use super::*;
-    use crate::{core::gate::GateId, Delta, GarbledWire, GateType, S};
+    use crate::{Delta, GarbledWire, GateType, S, core::gate::GateId};
 
     const GATE_ID: GateId = 0;
 
@@ -164,21 +164,21 @@ mod tests {
     #[test]
     fn test_different_hash_functions() {
         use sha2::Sha256;
-        
+
         let delta = Delta::generate();
         let mut rng = trng();
-        
+
         let a_label0 = S::random(&mut rng);
         let b_label0 = S::random(&mut rng);
         let a = GarbledWire::new(a_label0, a_label0 ^ &delta);
         let b = GarbledWire::new(b_label0, b_label0 ^ &delta);
-        
+
         // Test with Blake3
         let (ct_blake3, _) = garble::<blake3::Hasher>(GATE_ID, GateType::And, &a, &b, &delta);
-        
-        // Test with SHA256  
+
+        // Test with SHA256
         let (ct_sha256, _) = garble::<Sha256>(GATE_ID, GateType::And, &a, &b, &delta);
-        
+
         // Different hash functions should produce different ciphertexts
         assert_ne!(ct_blake3, ct_sha256);
     }

@@ -2,7 +2,7 @@ use num_bigint::BigUint;
 use rand::SeedableRng;
 
 use super::BigIntWires;
-use crate::{gadgets::bigint::bits_from_biguint_with_len, Circuit, Gate, WireId};
+use crate::{Circuit, Gate, WireId, gadgets::bigint::bits_from_biguint_with_len};
 
 fn trng() -> rand::rngs::StdRng {
     rand::rngs::StdRng::from_seed([0u8; 32])

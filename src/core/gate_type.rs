@@ -131,7 +131,6 @@ impl GateCount {
         self.0[GateType::Xor as usize] + self.0[GateType::Xnor as usize]
     }
 
-
     pub fn and_count(&self) -> u64 {
         self.0[GateType::And as usize]
     }
@@ -180,8 +179,18 @@ impl GateCount {
 impl std::fmt::Display for GateCount {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{:?}", self.0)?;
-        writeln!(f, "{:<15}{:>11}", "and variants:", self.and_variants_count())?;
-        writeln!(f, "{:<15}{:>11}", "xor variants:", self.xor_variants_count())?;
+        writeln!(
+            f,
+            "{:<15}{:>11}",
+            "and variants:",
+            self.and_variants_count()
+        )?;
+        writeln!(
+            f,
+            "{:<15}{:>11}",
+            "xor variants:",
+            self.xor_variants_count()
+        )?;
         writeln!(f, "{:<15}{:>11}", "not:", self.0[GateType::Not as usize])?;
         writeln!(f, "{:<15}{:>11}", "total:", self.total_gate_count())?;
         writeln!(f)

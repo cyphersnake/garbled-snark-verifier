@@ -1,6 +1,6 @@
 use std::iter;
 
-use super::{select, BigIntWires, BigUint};
+use super::{BigIntWires, BigUint, select};
 use crate::{Circuit, Gate, WireId};
 
 pub fn add_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {

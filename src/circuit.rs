@@ -3,8 +3,8 @@ use std::iter;
 use rand::Rng;
 
 use crate::{
+    Delta, EvaluatedWire, GarbledWire, GarbledWires, Gate, GateError, S, WireError, WireId,
     core::{gate::CorrectnessError, gate_type::GateCount},
-    Delta, EvaluatedWire, GarbledWire, GarbledWires, Gate, GateError, WireError, WireId, S,
 };
 
 type DefaultHasher = blake3::Hasher;
@@ -91,7 +91,10 @@ impl Circuit {
         self.garble_with::<DefaultHasher>(rng)
     }
 
-    pub fn garble_with<H: digest::Digest + Default + Clone>(&self, rng: &mut impl Rng) -> Result<GarbledCircuit, CircuitError> {
+    pub fn garble_with<H: digest::Digest + Default + Clone>(
+        &self,
+        rng: &mut impl Rng,
+    ) -> Result<GarbledCircuit, CircuitError> {
         log::debug!(
             "garble: start wires={} gates={}",
             self.num_wire,
@@ -106,7 +109,6 @@ impl Circuit {
         wires
             .get_or_init(self.get_true_wire_constant(), &mut issue_fn)
             .unwrap();
-
         wires
             .get_or_init(self.get_false_wire_constant(), &mut issue_fn)
             .unwrap();
@@ -313,7 +315,7 @@ mod failure_tests {
     use rand::SeedableRng;
 
     use super::{Circuit, Error};
-    use crate::{core::gate::CorrectnessError, CircuitError, Gate, GateError, GateType};
+    use crate::{CircuitError, Gate, GateError, GateType, core::gate::CorrectnessError};
 
     fn trng() -> rand::rngs::StdRng {
         rand::rngs::StdRng::from_seed([0u8; 32])

@@ -1,9 +1,9 @@
+use digest;
 use log::debug;
 use rand::Rng;
-use digest;
 
 pub use crate::GateType;
-use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
+use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, S, WireError, WireId};
 
 type DefaultHasher = blake3::Hasher;
 

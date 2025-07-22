@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use rand::{rng, Rng};
+use rand::{Rng, rng};
 
 use crate::S;
 
