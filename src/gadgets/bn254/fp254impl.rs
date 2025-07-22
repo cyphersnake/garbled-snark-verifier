@@ -422,38 +422,35 @@ pub trait Fp254Impl {
 
     /// Exponentiation by constant in Montgomery form
     fn exp_by_constant_montgomery(
-        _circuit: &mut Circuit,
-        _a: &BigIntWires,
-        _exp: &BigUint,
+        circuit: &mut Circuit,
+        a: &BigIntWires,
+        exp: &BigUint,
     ) -> BigIntWires {
-        todo!()
-        //assert_eq!(a.len(), Self::N_BITS);
+        if exp.is_zero() {
+            return BigIntWires::new_constant(circuit, a.len(), &BigUint::one()).unwrap();
+        }
 
-        //if exp.is_zero() {
-        //    return bigint::constant_wires(circuit, &BigUint::from(1u32), Self::N_BITS);
-        //}
+        if exp.is_one() {
+            return a.clone();
+        }
 
-        //if exp.is_one() {
-        //    return a.to_vec();
-        //}
+        let b_bits = bigint::bits_from_biguint(exp);
+        let len = b_bits.len();
+        let mut i = len - 1;
+        while !b_bits[i] {
+            i -= 1;
+        }
 
-        //let b_bits = bigint::bits_from_biguint(exp);
-        //let len = b_bits.len();
-        //let mut i = len - 1;
-        //while !b_bits[i] {
-        //    i -= 1;
-        //}
+        let mut result = a.clone();
+        for b_bit in b_bits.iter().rev().skip(len - i) {
+            let result_square = Self::square_montgomery(circuit, &result);
+            if *b_bit {
+                result = Self::mul_montgomery(circuit, a, &result_square);
+            } else {
+                result = result_square;
+            }
+        }
 
-        //let mut result = a.to_vec();
-        //for b_bit in b_bits.iter().rev().skip(len - i) {
-        //    let result_square = Self::square_montgomery(circuit, &result);
-        //    if *b_bit {
-        //        result = Self::mul_montgomery(circuit, a, &result_square);
-        //    } else {
-        //        result = result_square;
-        //    }
-        //}
-
-        //result
+        result
     }
 }
