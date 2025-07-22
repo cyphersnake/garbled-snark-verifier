@@ -1,17 +1,22 @@
 use super::{GateId, GateType};
 use crate::{Delta, EvaluatedWire, GarbledWire, S};
+use digest::Digest;
 
-/// Fixed-key AES hash with unique tweak per gate
-fn aes_hash(x: &S, tweak: GateId) -> S {
-    // Using Blake3 as AES substitute for now - in production should use AES
-    S(*blake3::Hasher::new()
-        .update(&x.0)
-        .update(&tweak.to_le_bytes())
-        .finalize()
-        .as_bytes())
+/// Generic hash function with unique tweak per gate using any digest implementation
+fn aes_hash<D: Digest + Default>(x: &S, tweak: GateId) -> S {
+    let result = D::default()
+        .chain_update(&x.0)
+        .chain_update(&tweak.to_le_bytes())
+        .finalize();
+    
+    let mut bytes = [0u8; 32];
+    let result_bytes = result.as_ref();
+    let copy_len = result_bytes.len().min(32);
+    bytes[..copy_len].copy_from_slice(&result_bytes[..copy_len]);
+    S(bytes)
 }
 
-pub(super) fn garble(
+pub(super) fn garble<H: digest::Digest + Default + Clone>(
     gate_id: GateId,
     gate_type: GateType,
     a: &GarbledWire,
@@ -20,8 +25,8 @@ pub(super) fn garble(
 ) -> (S, S) {
     let (alpha_a, alpha_b, alpha_c) = gate_type.alphas();
 
-    let h_a0 = aes_hash(&a.select(alpha_a), gate_id);
-    let h_a1 = aes_hash(&a.select(!alpha_a), gate_id);
+    let h_a0 = aes_hash::<H>(&a.select(alpha_a), gate_id);
+    let h_a1 = aes_hash::<H>(&a.select(!alpha_a), gate_id);
 
     let ct = h_a0 ^ &h_a1 ^ &b.select(alpha_b);
 
@@ -30,14 +35,14 @@ pub(super) fn garble(
     (ct, w)
 }
 
-pub(super) fn degarble(
+pub(super) fn degarble<H: digest::Digest + Default + Clone>(
     gate_id: GateId,
     gate_type: GateType,
     ciphertext: &S,
     a: &EvaluatedWire,
     b: &EvaluatedWire,
 ) -> S {
-    let h_a = aes_hash(&a.active_label, gate_id);
+    let h_a = aes_hash::<H>(&a.active_label, gate_id);
 
     let (alpha_a, _alpha_b, _alpha_c) = gate_type.alphas();
 
@@ -90,11 +95,11 @@ mod tests {
         // Create bitmask visualization (16 cases total: 2×2×4)
         let mut bitmask = String::with_capacity(16);
 
-        let (ct, c) = garble(GATE_ID, gt, &a, &b, &delta);
+        let (ct, c) = garble::<blake3::Hasher>(GATE_ID, gt, &a, &b, &delta);
         let c = GarbledWire::new(c, c ^ &delta);
 
         for (a_vl, b_vl) in TEST_CASES {
-            let evaluated = degarble(
+            let evaluated = degarble::<blake3::Hasher>(
                 GATE_ID,
                 gt,
                 &ct,
@@ -155,4 +160,26 @@ mod tests {
         Nor => garble_consistency_nor,
         Or => garble_consistency_or
     );
+
+    #[test]
+    fn test_different_hash_functions() {
+        use sha2::Sha256;
+        
+        let delta = Delta::generate();
+        let mut rng = trng();
+        
+        let a_label0 = S::random(&mut rng);
+        let b_label0 = S::random(&mut rng);
+        let a = GarbledWire::new(a_label0, a_label0 ^ &delta);
+        let b = GarbledWire::new(b_label0, b_label0 ^ &delta);
+        
+        // Test with Blake3
+        let (ct_blake3, _) = garble::<blake3::Hasher>(GATE_ID, GateType::And, &a, &b, &delta);
+        
+        // Test with SHA256  
+        let (ct_sha256, _) = garble::<Sha256>(GATE_ID, GateType::And, &a, &b, &delta);
+        
+        // Different hash functions should produce different ciphertexts
+        assert_ne!(ct_blake3, ct_sha256);
+    }
 }

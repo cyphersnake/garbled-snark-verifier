@@ -6,6 +6,9 @@ use crate::{
     core::{gate::CorrectnessError, gate_type::GateCount},
     Delta, EvaluatedWire, GarbledWire, GarbledWires, Gate, GateError, WireError, WireId, S,
 };
+use digest;
+
+type DefaultHasher = blake3::Hasher;
 
 /// Errors that can occur during circuit operations
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
@@ -86,6 +89,10 @@ impl Circuit {
     }
 
     pub fn garble(&self, rng: &mut impl Rng) -> Result<GarbledCircuit, CircuitError> {
+        self.garble_with::<DefaultHasher>(rng)
+    }
+
+    pub fn garble_with<H: digest::Digest + Default + Clone>(&self, rng: &mut impl Rng) -> Result<GarbledCircuit, CircuitError> {
         log::debug!(
             "garble: start wires={} gates={}",
             self.num_wire,
@@ -120,7 +127,7 @@ impl Circuit {
                     g.wire_b,
                     g.wire_c
                 );
-                match g.garble(i, &mut wires, &delta, rng) {
+                match g.garble::<H>(i, &mut wires, &delta, rng) {
                     Ok(Some(row)) => {
                         log::debug!("garble: gate[{i}] table_entries={row:?}");
                         Some(Ok(row))

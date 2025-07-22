@@ -1,8 +1,11 @@
 use log::debug;
 use rand::Rng;
+use digest;
 
 pub use crate::GateType;
 use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
+
+type DefaultHasher = blake3::Hasher;
 
 pub type GateId = usize;
 
@@ -222,7 +225,7 @@ impl Gate {
     }
 
     /// Return ciphertext for garble table if presented
-    pub fn garble(
+    pub fn garble<H: digest::Digest + Default + Clone>(
         &self,
         gate_id: GateId,
         wires: &mut GarbledWires,
@@ -275,7 +278,7 @@ impl Gate {
                 let a = self.wire_a(wires, &mut issue_fn)?.clone();
                 let b = self.wire_b(wires, &mut issue_fn)?;
 
-                let (ciphertext, w0) = garble(gate_id, self.gate_type, &a, b, delta);
+                let (ciphertext, w0) = garble::<H>(gate_id, self.gate_type, &a, b, delta);
 
                 self.init_wire_c(wires, w0, w0 ^ delta)?;
 
@@ -346,7 +349,7 @@ impl Gate {
             _ => {
                 let ct = garble_table[*table_gate_index];
                 *table_gate_index += 1;
-                degarble(gate_id, self.gate_type, &ct, a, b)
+                degarble::<DefaultHasher>(gate_id, self.gate_type, &ct, a, b)
             }
         };
 
@@ -487,7 +490,7 @@ mod tests {
         let mut wires = issue_test_wire();
 
         let table = gate
-            .garble(GATE_ID, &mut wires, &delta, &mut trng())
+            .garble::<blake3::Hasher>(GATE_ID, &mut wires, &delta, &mut trng())
             .expect("Garbling should succeed")
             .map(|row| vec![row])
             .unwrap_or_default();
@@ -541,7 +544,7 @@ mod tests {
         let mut wires = issue_test_wire();
 
         let table = gate
-            .garble(GATE_ID, &mut wires, &delta, &mut trng())
+            .garble::<blake3::Hasher>(GATE_ID, &mut wires, &delta, &mut trng())
             .expect("Garbling should succeed")
             .map(|row| vec![row])
             .unwrap_or_default();
