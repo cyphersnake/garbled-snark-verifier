@@ -1,5 +1,7 @@
 use std::{fmt, mem, ops::Deref};
 
+use rand::Rng;
+
 use crate::{Delta, S};
 
 /// Errors that can occur during wire operations
@@ -48,8 +50,8 @@ impl GarbledWire {
         mem::swap(&mut self.label1, &mut self.label0);
     }
 
-    pub fn random(delta: &Delta) -> Self {
-        let label0 = S::random();
+    pub fn random(rng: &mut impl Rng, delta: &Delta) -> Self {
+        let label0 = S::random(rng);
 
         GarbledWire {
             label0,
@@ -134,7 +136,7 @@ mod garbled_wires {
         pub fn get_or_init(
             &mut self,
             wire_id: WireId,
-            init: impl FnOnce() -> GarbledWire,
+            init: &mut impl FnMut() -> GarbledWire,
         ) -> Result<&GarbledWire, WireError> {
             if wire_id.0 >= self.max_wire_id {
                 return Err(WireError::InvalidWireIndex(wire_id));

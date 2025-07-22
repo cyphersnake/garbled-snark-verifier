@@ -5,7 +5,7 @@ use std::{
 };
 
 use blake3::hash;
-use rand::{rng, Rng};
+use rand::Rng;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct S(pub [u8; 32]);
@@ -25,8 +25,8 @@ impl S {
             .join("")
     }
 
-    pub fn random() -> Self {
-        Self(rng().random::<[u8; 32]>())
+    pub fn random(rng: &mut impl Rng) -> Self {
+        Self(rng.random())
     }
 
     pub fn neg(&self) -> Self {
@@ -118,34 +118,39 @@ impl BitXorAssign<&S> for S {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
+
+    fn rnd() -> S {
+        S::random(&mut rand::rngs::StdRng::from_seed([0u8; 32]))
+    }
 
     #[test]
     fn test_xor_zero_identity() {
         let zero = S([0u8; 32]);
-        let a = S::random();
+        let a = rnd();
         assert_eq!(&a ^ &zero, a, "a ^ 0 should be a");
         assert_eq!(&zero ^ &a, a, "0 ^ a should be a");
     }
 
     #[test]
     fn test_xor_self_is_zero() {
-        let a = S::random();
+        let a = rnd();
         let result = &a ^ &a;
         assert_eq!(result, S([0u8; 32]), "a ^ a should be 0");
     }
 
     #[test]
     fn test_xor_commutative() {
-        let a = S::random();
-        let b = S::random();
+        let a = rnd();
+        let b = rnd();
         assert_eq!(&a ^ &b, &b ^ &a, "a ^ b should equal b ^ a");
     }
 
     #[test]
     fn test_xor_associative() {
-        let a = S::random();
-        let b = S::random();
-        let c = S::random();
+        let a = rnd();
+        let b = rnd();
+        let c = rnd();
         assert_eq!((&a ^ &b) ^ &c, &a ^ &(&b ^ &c), "XOR should be associative");
     }
 
@@ -159,8 +164,8 @@ mod tests {
 
     #[test]
     fn test_bitxor_is_pure() {
-        let a = S::random();
-        let b = S::random();
+        let a = rnd();
+        let b = rnd();
         let _ = &a ^ &b;
         let _ = &a ^ &b;
         assert_eq!(a, a, "a should remain unchanged");

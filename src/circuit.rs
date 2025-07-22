@@ -1,5 +1,7 @@
 use std::iter;
 
+use rand::Rng;
+
 use crate::{
     core::{gate::CorrectnessError, gate_type::GateCount},
     Delta, EvaluatedWire, GarbledWire, GarbledWires, Gate, GateError, WireError, WireId, S,
@@ -83,7 +85,7 @@ impl Circuit {
         self.gates.push(gate);
     }
 
-    pub fn garble(&self) -> Result<GarbledCircuit, CircuitError> {
+    pub fn garble(&self, rng: &mut impl Rng) -> Result<GarbledCircuit, CircuitError> {
         log::debug!(
             "garble: start wires={} gates={}",
             self.num_wire,
@@ -93,16 +95,14 @@ impl Circuit {
         let delta = Delta::generate();
 
         let mut wires = GarbledWires::new(self.num_wire);
+        let mut issue_fn = || GarbledWire::random(rng, &delta);
+        // In case constants are not part of any of the `Gate`.
         wires
-            .get_or_init(self.get_true_wire_constant(), || {
-                GarbledWire::random(&delta)
-            })
+            .get_or_init(self.get_true_wire_constant(), &mut issue_fn)
             .unwrap();
 
         wires
-            .get_or_init(self.get_false_wire_constant(), || {
-                GarbledWire::random(&delta)
-            })
+            .get_or_init(self.get_false_wire_constant(), &mut issue_fn)
             .unwrap();
 
         log::debug!("garble: delta={delta:?}");
@@ -120,7 +120,7 @@ impl Circuit {
                     g.wire_b,
                     g.wire_c
                 );
-                match g.garble(i, &mut wires, &delta) {
+                match g.garble(i, &mut wires, &delta, rng) {
                     Ok(Some(row)) => {
                         log::debug!("garble: gate[{i}] table_entries={row:?}");
                         Some(Ok(row))
@@ -151,8 +151,9 @@ impl Circuit {
         &self,
         get_input: impl Fn(WireId) -> Option<bool>,
         get_expected_output: impl Fn(WireId) -> Option<bool>,
+        rng: &mut impl Rng,
     ) {
-        self.garble()
+        self.garble(rng)
             .unwrap_or_else(|err| panic!("Can't garble with {err:#?}"))
             .evaluate(get_input)
             .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))
@@ -303,8 +304,14 @@ impl GarbledCircuit {
 mod failure_tests {
     use std::collections::HashMap;
 
+    use rand::SeedableRng;
+
     use super::{Circuit, Error};
     use crate::{core::gate::CorrectnessError, CircuitError, Gate, GateError, GateType};
+
+    fn trng() -> rand::rngs::StdRng {
+        rand::rngs::StdRng::from_seed([0u8; 32])
+    }
 
     #[test]
     fn test_missing_input_failure() {
@@ -317,7 +324,9 @@ mod failure_tests {
         circuit.add_gate(Gate::new(GateType::And, a_wire, b_wire, out_wire));
         circuit.make_wire_output(out_wire);
 
-        let garbled = circuit.garble().expect("Garbling should succeed");
+        let garbled = circuit
+            .garble(&mut trng())
+            .expect("Garbling should succeed");
 
         let result = garbled.evaluate(|wire_id| if wire_id == a_wire { Some(true) } else { None });
 
@@ -356,7 +365,7 @@ mod failure_tests {
         circuit.make_wire_output(output_wire);
 
         assert_eq!(
-            circuit.garble().err(),
+            circuit.garble(&mut trng()).err(),
             Some(CircuitError::Gate(GateError::InitWire {
                 wire: "c",
                 err: crate::WireError::InvalidWireIndex(intermediate_wire)
@@ -375,7 +384,7 @@ mod failure_tests {
         circuit.add_gate(Gate::new(GateType::And, a_wire, invalid_wire, out_wire));
         circuit.make_wire_output(out_wire);
 
-        let result = circuit.garble();
+        let result = circuit.garble(&mut trng());
 
         assert!(
             result.is_err(),
@@ -398,11 +407,13 @@ mod failure_tests {
             .into_iter()
             .collect::<HashMap<_, _>>();
 
-        let mut garbled = circuit.garble().expect("Garbling should succeed");
+        let mut garbled = circuit
+            .garble(&mut trng())
+            .expect("Garbling should succeed");
 
         // Corrupt the entire first row of the garbled table
         for entry in &mut garbled.garbled_table {
-            *entry = crate::S::random();
+            *entry = crate::S::random(&mut rand::rngs::StdRng::from_seed([50u8; 32]));
         }
 
         let evaluated = garbled
@@ -428,7 +439,9 @@ mod failure_tests {
         circuit.add_gate(Gate::new(GateType::And, a_wire, b_wire, out_wire));
         circuit.make_wire_output(out_wire);
 
-        let garbled = circuit.garble().expect("Garbling should succeed");
+        let garbled = circuit
+            .garble(&mut trng())
+            .expect("Garbling should succeed");
 
         let result = garbled.evaluate(|_| None);
 

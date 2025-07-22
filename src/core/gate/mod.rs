@@ -1,4 +1,5 @@
 use log::debug;
+use rand::Rng;
 
 pub use crate::GateType;
 use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
@@ -196,20 +197,20 @@ impl Gate {
     fn wire_a<'w>(
         &self,
         wires: &'w mut GarbledWires,
-        delta: &Delta,
+        issue_gwire_fn: &mut impl FnMut() -> GarbledWire,
     ) -> Result<&'w GarbledWire, Error> {
         wires
-            .get_or_init(self.wire_a, || GarbledWire::random(delta))
+            .get_or_init(self.wire_a, issue_gwire_fn)
             .map_err(|err| Error::GetWire { wire: "a", err })
     }
 
     fn wire_b<'w>(
         &self,
         wires: &'w mut GarbledWires,
-        delta: &Delta,
+        issue_gwire_fn: &mut impl FnMut() -> GarbledWire,
     ) -> Result<&'w GarbledWire, Error> {
         wires
-            .get_or_init(self.wire_b, || GarbledWire::random(delta))
+            .get_or_init(self.wire_b, issue_gwire_fn)
             .map_err(|err| Error::GetWire { wire: "b", err })
     }
 
@@ -226,15 +227,19 @@ impl Gate {
         gate_id: GateId,
         wires: &mut GarbledWires,
         delta: &Delta,
+        rng: &mut impl Rng,
     ) -> Result<Option<S>, Error> {
         debug!(
             "gate_garble: {:?} {}+{}->{} gid={}",
             self.gate_type, self.wire_a, self.wire_b, self.wire_c, gate_id
         );
+
+        let mut issue_fn = || GarbledWire::random(rng, delta);
+
         match self.gate_type {
             GateType::Xor => {
-                let a_label0 = self.wire_a(wires, delta)?.select(false);
-                let b_label0 = self.wire_b(wires, delta)?.select(false);
+                let a_label0 = self.wire_a(wires, &mut issue_fn)?.select(false);
+                let b_label0 = self.wire_b(wires, &mut issue_fn)?.select(false);
 
                 let c_label0 = a_label0 ^ &b_label0;
                 let c_label1 = c_label0 ^ delta;
@@ -244,8 +249,8 @@ impl Gate {
                 Ok(None)
             }
             GateType::Xnor => {
-                let a_label0 = self.wire_a(wires, delta)?.select(false);
-                let b_label0 = self.wire_b(wires, delta)?.select(false);
+                let a_label0 = self.wire_a(wires, &mut issue_fn)?.select(false);
+                let b_label0 = self.wire_b(wires, &mut issue_fn)?.select(false);
 
                 let c_label0 = a_label0 ^ &b_label0 ^ delta;
                 let c_label1 = c_label0 ^ delta;
@@ -258,7 +263,7 @@ impl Gate {
                 assert_eq!(self.wire_a, self.wire_b);
                 assert_eq!(self.wire_b, self.wire_c);
 
-                self.wire_a(wires, delta)?;
+                self.wire_a(wires, &mut issue_fn)?;
 
                 wires
                     .toggle_wire_not_mark(self.wire_c)
@@ -267,8 +272,8 @@ impl Gate {
                 Ok(None)
             }
             _ => {
-                let a = self.wire_a(wires, delta)?.clone();
-                let b = self.wire_b(wires, delta)?;
+                let a = self.wire_a(wires, &mut issue_fn)?.clone();
+                let b = self.wire_b(wires, &mut issue_fn)?;
 
                 let (ciphertext, w0) = garble(gate_id, self.gate_type, &a, b, delta);
 
@@ -452,12 +457,18 @@ use garbling::{degarble, garble};
 mod tests {
     use std::collections::HashMap;
 
+    use rand::SeedableRng;
+
     use super::*;
 
     const GATE_ID: GateId = 0;
 
     const TEST_CASES: [(bool, bool); 4] =
         [(false, false), (false, true), (true, false), (true, true)];
+
+    fn trng() -> rand::rngs::StdRng {
+        rand::rngs::StdRng::from_seed([0u8; 32])
+    }
 
     fn create_test_delta() -> Delta {
         Delta::generate()
@@ -476,7 +487,7 @@ mod tests {
         let mut wires = issue_test_wire();
 
         let table = gate
-            .garble(GATE_ID, &mut wires, &delta)
+            .garble(GATE_ID, &mut wires, &delta, &mut trng())
             .expect("Garbling should succeed")
             .map(|row| vec![row])
             .unwrap_or_default();
@@ -530,7 +541,7 @@ mod tests {
         let mut wires = issue_test_wire();
 
         let table = gate
-            .garble(GATE_ID, &mut wires, &delta)
+            .garble(GATE_ID, &mut wires, &delta, &mut trng())
             .expect("Garbling should succeed")
             .map(|row| vec![row])
             .unwrap_or_default();

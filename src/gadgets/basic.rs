@@ -82,9 +82,14 @@ impl Circuit {
 mod tests {
     use std::collections::HashMap;
 
+    use rand::SeedableRng;
     use test_log::test;
 
     use super::*;
+
+    fn trng() -> rand::rngs::StdRng {
+        rand::rngs::StdRng::from_seed([0u8; 32])
+    }
 
     #[test]
     fn not_not() {
@@ -96,11 +101,11 @@ mod tests {
         circuit.add_gate(Gate::not(&mut wire));
         circuit.add_gate(Gate::not(&mut wire));
 
-        circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(true));
+        circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(true), &mut trng());
 
         circuit.add_gate(Gate::not(&mut wire));
 
-        circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(false));
+        circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(false), &mut trng());
     }
 
     #[test]
@@ -122,7 +127,7 @@ mod tests {
 
         circuit.make_wire_output(res);
 
-        circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(true));
+        circuit.full_cycle_test(|_id| Some(true), |_wire_id| Some(true), &mut trng());
     }
 
     #[test]
@@ -145,7 +150,7 @@ mod tests {
             circuit.make_wire_output(carry_wire);
 
             circuit
-                .garble()
+                .garble(&mut trng())
                 .unwrap()
                 .evaluate(|id| {
                     if id == a_wire {
@@ -198,7 +203,7 @@ mod tests {
                 .into_iter()
                 .collect::<HashMap<WireId, bool>>();
             circuit
-                .garble()
+                .garble(&mut trng())
                 .unwrap()
                 .evaluate(|id| input.get(&id).copied())
                 .unwrap()
@@ -235,7 +240,7 @@ mod tests {
             circuit.make_wire_output(borrow_wire);
 
             circuit
-                .garble()
+                .garble(&mut trng())
                 .unwrap()
                 .evaluate(|id| id.eq(&a_wire).then_some(a).or(id.eq(&b_wire).then_some(b)))
                 .unwrap()
@@ -280,7 +285,7 @@ mod tests {
                 .into_iter()
                 .collect::<HashMap<WireId, bool>>();
             circuit
-                .garble()
+                .garble(&mut trng())
                 .unwrap()
                 .evaluate(|id| input.get(&id).copied())
                 .unwrap()
@@ -325,7 +330,7 @@ mod tests {
                 .collect::<HashMap<WireId, bool>>();
 
             circuit
-                .garble()
+                .garble(&mut trng())
                 .unwrap()
                 .evaluate(|id| input.get(&id).copied())
                 .unwrap()
@@ -373,7 +378,7 @@ mod tests {
         }
 
         circuit
-            .garble()
+            .garble(&mut trng())
             .unwrap()
             .evaluate(|id| input.get(&id).copied())
             .unwrap()

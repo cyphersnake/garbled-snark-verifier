@@ -99,7 +99,7 @@ const fn alphas(tt: u8) -> (bool, bool, bool) {
 
 const GATE_TYPE_COUNT: usize = 11;
 
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct GateCount(pub [u64; GATE_TYPE_COUNT]);
 
 impl GateCount {

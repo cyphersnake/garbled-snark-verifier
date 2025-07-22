@@ -319,9 +319,14 @@ pub fn mul_by_constant_modulo_power_two(
 }
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
     use test_log::test;
 
     use super::*;
+
+    fn trng() -> rand::rngs::StdRng {
+        rand::rngs::StdRng::from_seed([0u8; 32])
+    }
 
     fn test_mul_operation(
         n_bits: usize,
@@ -352,6 +357,7 @@ mod tests {
         circuit.full_cycle_test(
             |id| a_input(id).or_else(|| b_input(id)),
             get_expected_result_fn,
+            &mut trng(),
         );
     }
 
@@ -377,7 +383,7 @@ mod tests {
         let a_input = a.get_wire_bits_fn(&a_big).unwrap();
         let get_expected_result_fn = result.get_wire_bits_fn(&expected_big).unwrap();
 
-        circuit.full_cycle_test(a_input, get_expected_result_fn);
+        circuit.full_cycle_test(a_input, get_expected_result_fn, &mut trng());
     }
 
     const NUM_BITS: usize = 8;
@@ -600,7 +606,7 @@ mod tests {
         let a_input = a.get_wire_bits_fn(&a_big).unwrap();
         let result_output = result.get_wire_bits_fn(&expected_big).unwrap();
 
-        circuit.full_cycle_test(a_input, result_output);
+        circuit.full_cycle_test(a_input, result_output, &mut trng());
     }
 
     #[test]
@@ -625,7 +631,7 @@ mod tests {
         let a_input = a.get_wire_bits_fn(&a_big).unwrap();
         let get_expected_result_fn = result.get_wire_bits_fn(&expected_big).unwrap();
 
-        circuit.full_cycle_test(a_input, get_expected_result_fn);
+        circuit.full_cycle_test(a_input, get_expected_result_fn, &mut trng());
     }
 
     #[test]
@@ -649,7 +655,7 @@ mod tests {
         let a_input = a.get_wire_bits_fn(&a_big).unwrap();
         let result_output = result.get_wire_bits_fn(&expected_big).unwrap();
 
-        circuit.full_cycle_test(a_input, result_output);
+        circuit.full_cycle_test(a_input, result_output, &mut trng());
     }
 
     // Test with different bit sizes

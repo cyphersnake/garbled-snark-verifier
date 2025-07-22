@@ -1,7 +1,12 @@
 use num_bigint::BigUint;
+use rand::SeedableRng;
 
 use super::BigIntWires;
 use crate::{gadgets::bigint::bits_from_biguint_with_len, Circuit, Gate, WireId};
+
+fn trng() -> rand::rngs::StdRng {
+    rand::rngs::StdRng::from_seed([0u8; 32])
+}
 
 pub fn self_or_zero(circuit: &mut Circuit, a: &BigIntWires, s: WireId) -> BigIntWires {
     BigIntWires {
@@ -199,6 +204,7 @@ mod tests {
                     None
                 }
             },
+            &mut trng(),
         );
     }
 
@@ -219,13 +225,17 @@ mod tests {
         let a_big = BigUint::from(a_val);
         let a_input = a.get_wire_bits_fn(&a_big).unwrap();
 
-        circuit.full_cycle_test(a_input, |wire_id| {
-            if wire_id == result {
-                Some(expected)
-            } else {
-                None
-            }
-        });
+        circuit.full_cycle_test(
+            a_input,
+            |wire_id| {
+                if wire_id == result {
+                    Some(expected)
+                } else {
+                    None
+                }
+            },
+            &mut trng(),
+        );
     }
 
     fn test_select_operation(n_bits: usize, a_val: u64, b_val: u64, selector: bool, expected: u64) {
@@ -264,6 +274,7 @@ mod tests {
                     None
                 }
             },
+            &mut trng(),
         );
     }
 
@@ -315,7 +326,7 @@ mod tests {
         circuit.make_wire_output(result);
 
         let output = circuit
-            .garble()
+            .garble(&mut trng())
             .unwrap()
             .evaluate(|id| a_input(id).or_else(|| b_input(id)))
             .unwrap_or_else(|err| panic!("Can't eval with {err:#?}"))

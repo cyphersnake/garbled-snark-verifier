@@ -50,6 +50,8 @@ pub(super) fn degarble(
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+
     use super::*;
     use crate::{core::gate::GateId, Delta, GarbledWire, GateType, S};
 
@@ -57,6 +59,10 @@ mod tests {
 
     const TEST_CASES: [(bool, bool); 4] =
         [(false, false), (false, true), (true, false), (true, true)];
+
+    fn trng() -> rand::rngs::StdRng {
+        rand::rngs::StdRng::from_seed([0u8; 32])
+    }
 
     fn garble_consistency(gt: GateType) {
         let delta = Delta::generate();
@@ -73,8 +79,9 @@ mod tests {
         let mut failed_cases = Vec::new();
 
         // Create wires with specific LSB patterns
-        let a_label0 = S::random();
-        let b_label0 = S::random();
+        let mut rng = trng();
+        let a_label0 = S::random(&mut rng);
+        let b_label0 = S::random(&mut rng);
         let a = GarbledWire::new(a_label0, a_label0 ^ &delta);
         let b = GarbledWire::new(b_label0, b_label0 ^ &delta);
 
