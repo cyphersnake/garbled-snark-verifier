@@ -1,8 +1,8 @@
 use std::iter;
 
 use crate::{
-    core::gate::CorrectnessError, Delta, EvaluatedWire, GarbledWires, Gate, GateError, WireError,
-    WireId, S,
+    core::gate::CorrectnessError, Delta, EvaluatedWire, GarbledWire, GarbledWires, Gate, GateError,
+    WireError, WireId, S,
 };
 
 /// Errors that can occur during circuit operations
@@ -86,8 +86,22 @@ impl Circuit {
             self.num_wire,
             self.gates.len()
         );
-        let mut wires = GarbledWires::new(self.num_wire);
+
         let delta = Delta::generate();
+
+        let mut wires = GarbledWires::new(self.num_wire);
+        wires
+            .get_or_init(self.get_true_wire_constant(), || {
+                GarbledWire::random(&delta)
+            })
+            .unwrap();
+
+        wires
+            .get_or_init(self.get_false_wire_constant(), || {
+                GarbledWire::random(&delta)
+            })
+            .unwrap();
+
         log::debug!("garble: delta={delta:?}");
 
         let garbled_table = self

@@ -131,14 +131,11 @@ mod garbled_wires {
             Ok(())
         }
 
-        pub fn get_or_init<F>(
+        pub fn get_or_init(
             &mut self,
             wire_id: WireId,
-            init: F,
-        ) -> Result<&GarbledWire, WireError>
-        where
-            F: FnOnce() -> GarbledWire,
-        {
+            init: impl FnOnce() -> GarbledWire,
+        ) -> Result<&GarbledWire, WireError> {
             if wire_id.0 >= self.max_wire_id {
                 return Err(WireError::InvalidWireIndex(wire_id));
             }
