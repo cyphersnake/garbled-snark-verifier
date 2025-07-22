@@ -415,8 +415,8 @@ pub trait Fp254Impl {
         Self::mul_by_constant_montgomery(
             circuit,
             &b,
-            &(ark_bn254::Fq::from(Fq::montgomery_r_as_biguint()).square()
-                * ark_bn254::Fq::from(Fq::montgomery_r_as_biguint())),
+            &(ark_bn254::Fq::from(Self::montgomery_r_as_biguint()).square()
+                * ark_bn254::Fq::from(Self::montgomery_r_as_biguint())),
         )
     }
 
