@@ -1,19 +1,21 @@
-use super::{GateId, GateType};
-use crate::{Delta, EvaluatedWire, GarbledWire, S};
 use digest::Digest;
 
-/// Generic hash function with unique tweak per gate using any digest implementation
-fn aes_hash<D: Digest + Default>(x: &S, tweak: GateId) -> S {
-    let result = D::default()
-        .chain_update(x.0)
-        .chain_update(tweak.to_le_bytes())
-        .finalize();
+use super::{GateId, GateType};
+use crate::{Delta, EvaluatedWire, GarbledWire, S};
 
-    let mut bytes = [0u8; 32];
-    let result_bytes = result.as_ref();
-    let copy_len = result_bytes.len().min(32);
-    bytes[..copy_len].copy_from_slice(&result_bytes[..copy_len]);
-    S(bytes)
+/// Generic hash function with unique tweak per gate using any digest implementation
+fn hash_gate_with_tweak<D: Digest + Default>(x: &S, tweak: GateId) -> S {
+    assert!(<D as Digest>::output_size() >= 32);
+    let mut result = [0u8; 32];
+
+    result.copy_from_slice(
+        &D::default()
+            .chain_update(x.0)
+            .chain_update(tweak.to_le_bytes())
+            .finalize(),
+    );
+
+    S(result)
 }
 
 pub(super) fn garble<H: digest::Digest + Default + Clone>(
@@ -25,8 +27,8 @@ pub(super) fn garble<H: digest::Digest + Default + Clone>(
 ) -> (S, S) {
     let (alpha_a, alpha_b, alpha_c) = gate_type.alphas();
 
-    let h_a0 = aes_hash::<H>(&a.select(alpha_a), gate_id);
-    let h_a1 = aes_hash::<H>(&a.select(!alpha_a), gate_id);
+    let h_a0 = hash_gate_with_tweak::<H>(&a.select(alpha_a), gate_id);
+    let h_a1 = hash_gate_with_tweak::<H>(&a.select(!alpha_a), gate_id);
 
     let ct = h_a0 ^ &h_a1 ^ &b.select(alpha_b);
 
@@ -42,7 +44,7 @@ pub(super) fn degarble<H: digest::Digest + Default + Clone>(
     a: &EvaluatedWire,
     b: &EvaluatedWire,
 ) -> S {
-    let h_a = aes_hash::<H>(&a.active_label, gate_id);
+    let h_a = hash_gate_with_tweak::<H>(&a.active_label, gate_id);
 
     let (alpha_a, _alpha_b, _alpha_c) = gate_type.alphas();
 
@@ -55,17 +57,14 @@ pub(super) fn degarble<H: digest::Digest + Default + Clone>(
 
 #[cfg(test)]
 mod tests {
-    
 
-    use crate::test_utils::trng;
     use super::*;
-    use crate::{Delta, GarbledWire, GateType, S, core::gate::GateId};
+    use crate::{core::gate::GateId, test_utils::trng, Delta, GarbledWire, GateType, S};
 
     const GATE_ID: GateId = 0;
 
     const TEST_CASES: [(bool, bool); 4] =
         [(false, false), (false, true), (true, false), (true, true)];
-
 
     fn garble_consistency(gt: GateType) {
         let delta = Delta::generate();
