@@ -59,7 +59,7 @@ pub(super) fn degarble<H: digest::Digest + Default + Clone>(
 mod tests {
 
     use super::*;
-    use crate::{core::gate::GateId, test_utils::trng, Delta, GarbledWire, GateType, S};
+    use crate::{Delta, GarbledWire, GateType, S, core::gate::GateId, test_utils::trng};
 
     const GATE_ID: GateId = 0;
 

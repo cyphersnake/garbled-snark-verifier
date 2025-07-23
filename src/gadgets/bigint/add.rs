@@ -190,12 +190,11 @@ pub fn odd_part(circuit: &mut Circuit, a: &BigIntWires) -> (BigIntWires, BigIntW
 
 #[cfg(test)]
 mod tests {
-    
+
     use test_log::test;
 
-    use crate::test_utils::trng;
     use super::*;
-
+    use crate::test_utils::trng;
 
     fn test_two_input_operation(
         n_bits: usize,

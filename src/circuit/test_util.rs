@@ -26,11 +26,10 @@ impl Circuit {
 mod failure_tests {
     use super::super::evaluation::Error;
     use super::Circuit;
+    use crate::test_utils::trng;
     use crate::{CircuitError, Gate, GateError, GateType, WireId, core::gate::CorrectnessError};
     use rand::{Rng, SeedableRng};
     use std::collections::HashMap;
-    use crate::test_utils::trng;
-
 
     #[test]
     fn test_missing_input_failure() {

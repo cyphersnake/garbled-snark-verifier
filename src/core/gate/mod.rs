@@ -460,16 +460,13 @@ use garbling::{degarble, garble};
 mod tests {
     use std::collections::HashMap;
 
-    
-
-    use crate::test_utils::trng;
     use super::*;
+    use crate::test_utils::trng;
 
     const GATE_ID: GateId = 0;
 
     const TEST_CASES: [(bool, bool); 4] =
         [(false, false), (false, true), (true, false), (true, true)];
-
 
     fn create_test_delta() -> Delta {
         Delta::generate()

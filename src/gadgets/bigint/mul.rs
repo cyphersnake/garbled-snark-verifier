@@ -319,12 +319,11 @@ pub fn mul_by_constant_modulo_power_two(
 }
 #[cfg(test)]
 mod tests {
-    
+
     use test_log::test;
 
-    use crate::test_utils::trng;
     use super::*;
-
+    use crate::test_utils::trng;
 
     fn test_mul_operation(
         n_bits: usize,

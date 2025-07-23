@@ -3,7 +3,6 @@ use num_bigint::BigUint;
 use super::BigIntWires;
 use crate::{Circuit, Gate, WireId, gadgets::bigint::bits_from_biguint_with_len};
 
-
 pub fn self_or_zero(circuit: &mut Circuit, a: &BigIntWires, s: WireId) -> BigIntWires {
     BigIntWires {
         bits: a
@@ -169,8 +168,8 @@ mod tests {
     use log::debug;
     use test_log::test;
 
-    use crate::test_utils::trng;
     use super::*;
+    use crate::test_utils::trng;
 
     fn test_comparison_operation(
         n_bits: usize,
