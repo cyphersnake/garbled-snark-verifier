@@ -4,7 +4,7 @@ use ark_ff::{Field, PrimeField};
 use num_bigint::BigUint;
 
 use super::super::{bigint::BigIntWires, bn254::fp254impl::Fp254Impl};
-use crate::circuit::Circuit;
+use crate::Circuit;
 
 /// BN254 base field Fq implementation
 pub struct Fq;

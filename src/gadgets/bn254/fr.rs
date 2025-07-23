@@ -1,7 +1,7 @@
 use num_bigint::BigUint;
 
 use super::super::bn254::Fp254Impl;
-use crate::{circuit::Circuit, gadgets::bigint::BigIntWires};
+use crate::{Circuit, gadgets::bigint::BigIntWires};
 
 /// BN254 scalar field Fr implementation  
 pub struct Fr;
