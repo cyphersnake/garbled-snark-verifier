@@ -1,6 +1,6 @@
 use std::iter;
 
-use super::{BigIntWires, BigUint, select};
+use super::{select, BigIntWires, BigUint};
 use crate::{Circuit, Gate, WireId};
 
 pub fn add_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
@@ -323,5 +323,52 @@ mod tests {
     #[test]
     fn test_sub_generic_same_values() {
         test_two_input_operation(NUM_BITS, 7, 7, 0, sub_generic);
+    }
+
+    fn test_single_input_operation(
+        n_bits: usize,
+        a_val: u64,
+        expected: u64,
+        operation: impl FnOnce(&mut Circuit, &BigIntWires) -> BigIntWires,
+    ) {
+        let mut circuit = Circuit::default();
+        let a = BigIntWires::new(&mut circuit, n_bits, true, false);
+        let result = operation(&mut circuit, &a);
+        assert_eq!(result.bits.len(), n_bits);
+
+        result.mark_as_output(&mut circuit);
+
+        let a_big = BigUint::from(a_val);
+        let expected_big = BigUint::from(expected);
+
+        let a_input = a.get_wire_bits_fn(&a_big).unwrap();
+        let get_expected_result_fn = result.get_wire_bits_fn(&expected_big).unwrap();
+
+        circuit.full_cycle_test(a_input, get_expected_result_fn, &mut trng());
+    }
+
+    #[test]
+    fn test_half_even_number() {
+        test_single_input_operation(NUM_BITS, 8, 4, half);
+    }
+
+    #[test]
+    fn test_half_odd_number() {
+        test_single_input_operation(NUM_BITS, 9, 4, half);
+    }
+
+    #[test]
+    fn test_half_zero() {
+        test_single_input_operation(NUM_BITS, 0, 0, half);
+    }
+
+    #[test]
+    fn test_half_one() {
+        test_single_input_operation(NUM_BITS, 1, 0, half);
+    }
+
+    #[test]
+    fn test_half_max_value() {
+        test_single_input_operation(NUM_BITS, 15, 7, half);
     }
 }

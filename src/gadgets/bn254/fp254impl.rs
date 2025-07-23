@@ -5,7 +5,7 @@ use num_bigint::{BigInt, BigUint};
 use num_traits::{One, Zero};
 
 use super::super::bigint::{self, BigIntWires};
-use crate::{Circuit, Gate, WireId, math::montgomery::calculate_montgomery_constants};
+use crate::{math::montgomery::calculate_montgomery_constants, Circuit, Gate, WireId};
 
 /// Core trait for BN254 field implementation with 254-bit prime field arithmetic
 /// Provides constants and operations for field elements in Montgomery form
@@ -175,7 +175,7 @@ pub trait Fp254Impl {
 
         let selector = a.get(0).unwrap();
         let wires_1 = bigint::half(circuit, a);
-        let wires_2 = bigint::add_constant(circuit, &wires_1, &Self::half_modulus());
+        let wires_2 = bigint::add_constant_without_carry(circuit, &wires_1, &Self::half_modulus());
 
         bigint::select(circuit, &wires_2, &wires_1, selector)
     }
@@ -452,6 +452,12 @@ pub trait Fp254Impl {
         }
 
         result
+    }
+
+    fn triple(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
+        assert_eq!(a.len(), Self::N_BITS);
+        let a_2 = Self::double(circuit, a);
+        Self::add(circuit, &a_2, a)
     }
 
     fn div6(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
