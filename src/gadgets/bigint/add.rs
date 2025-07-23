@@ -141,7 +141,8 @@ pub fn double_without_overflow(circuit: &mut Circuit, a: &BigIntWires) -> BigInt
 
 pub fn half(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
     let zero_wire = circuit.issue_wire();
-    circuit.add_gate(Gate::nimp(a.bits[0], a.bits[0], zero_wire));
+    let false_ = circuit.get_false_wire_constant();
+    circuit.add_gate(Gate::and(false_, false_, zero_wire));
 
     BigIntWires {
         bits: a
