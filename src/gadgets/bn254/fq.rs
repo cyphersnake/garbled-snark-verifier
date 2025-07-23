@@ -24,15 +24,15 @@ impl Fp254Impl for Fq {
     const N_BITS: usize = 254;
 
     fn half_modulus() -> BigUint {
-        Self::modulus_as_biguint() / 2u32
+        BigUint::from(ark_bn254::Fq::from(1) / ark_bn254::Fq::from(2))
     }
 
     fn one_third_modulus() -> BigUint {
-        Self::modulus_as_biguint() / 3u32
+        BigUint::from(ark_bn254::Fq::from(1) / ark_bn254::Fq::from(3))
     }
 
     fn two_third_modulus() -> BigUint {
-        Self::modulus_as_biguint() * 2u32 / 3u32
+        BigUint::from(ark_bn254::Fq::from(2) / ark_bn254::Fq::from(3))
     }
 }
 
@@ -155,7 +155,7 @@ mod tests {
 
                 let a_input = Fq::get_wire_bits_fn(&a, &a_v).unwrap();
                 let c_output = Fq::get_wire_bits_fn(&c, &expected).unwrap();
-circuit
+                circuit
                     .simple_evaluate(|wire_id| (a_input)(wire_id))
                     .unwrap()
                     .for_each(|(wire_id, value)| {
