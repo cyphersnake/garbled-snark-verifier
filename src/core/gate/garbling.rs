@@ -55,8 +55,9 @@ pub(super) fn degarble<H: digest::Digest + Default + Clone>(
 
 #[cfg(test)]
 mod tests {
-    use rand::SeedableRng;
+    
 
+    use crate::test_utils::trng;
     use super::*;
     use crate::{Delta, GarbledWire, GateType, S, core::gate::GateId};
 
@@ -65,9 +66,6 @@ mod tests {
     const TEST_CASES: [(bool, bool); 4] =
         [(false, false), (false, true), (true, false), (true, true)];
 
-    fn trng() -> rand::rngs::StdRng {
-        rand::rngs::StdRng::from_seed([0u8; 32])
-    }
 
     fn garble_consistency(gt: GateType) {
         let delta = Delta::generate();

@@ -1,12 +1,8 @@
 use num_bigint::BigUint;
-use rand::SeedableRng;
 
 use super::BigIntWires;
 use crate::{Circuit, Gate, WireId, gadgets::bigint::bits_from_biguint_with_len};
 
-fn trng() -> rand::rngs::StdRng {
-    rand::rngs::StdRng::from_seed([0u8; 32])
-}
 
 pub fn self_or_zero(circuit: &mut Circuit, a: &BigIntWires, s: WireId) -> BigIntWires {
     BigIntWires {
@@ -173,6 +169,7 @@ mod tests {
     use log::debug;
     use test_log::test;
 
+    use crate::test_utils::trng;
     use super::*;
 
     fn test_comparison_operation(

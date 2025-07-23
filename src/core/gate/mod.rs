@@ -460,8 +460,9 @@ use garbling::{degarble, garble};
 mod tests {
     use std::collections::HashMap;
 
-    use rand::SeedableRng;
+    
 
+    use crate::test_utils::trng;
     use super::*;
 
     const GATE_ID: GateId = 0;
@@ -469,9 +470,6 @@ mod tests {
     const TEST_CASES: [(bool, bool); 4] =
         [(false, false), (false, true), (true, false), (true, true)];
 
-    fn trng() -> rand::rngs::StdRng {
-        rand::rngs::StdRng::from_seed([0u8; 32])
-    }
 
     fn create_test_delta() -> Delta {
         Delta::generate()

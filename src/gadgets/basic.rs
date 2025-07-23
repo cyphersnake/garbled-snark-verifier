@@ -82,14 +82,12 @@ impl Circuit {
 mod tests {
     use std::collections::HashMap;
 
-    use rand::SeedableRng;
+    
     use test_log::test;
+    use crate::test_utils::trng;
 
     use super::*;
 
-    fn trng() -> rand::rngs::StdRng {
-        rand::rngs::StdRng::from_seed([0u8; 32])
-    }
 
     #[test]
     fn not_not() {

@@ -319,14 +319,12 @@ pub fn mul_by_constant_modulo_power_two(
 }
 #[cfg(test)]
 mod tests {
-    use rand::SeedableRng;
+    
     use test_log::test;
 
+    use crate::test_utils::trng;
     use super::*;
 
-    fn trng() -> rand::rngs::StdRng {
-        rand::rngs::StdRng::from_seed([0u8; 32])
-    }
 
     fn test_mul_operation(
         n_bits: usize,

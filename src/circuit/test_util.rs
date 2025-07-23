@@ -29,10 +29,8 @@ mod failure_tests {
     use crate::{CircuitError, Gate, GateError, GateType, WireId, core::gate::CorrectnessError};
     use rand::{Rng, SeedableRng};
     use std::collections::HashMap;
+    use crate::test_utils::trng;
 
-    fn trng() -> rand::rngs::StdRng {
-        rand::rngs::StdRng::from_seed([0u8; 32])
-    }
 
     #[test]
     fn test_missing_input_failure() {
