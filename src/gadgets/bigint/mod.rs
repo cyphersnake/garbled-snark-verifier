@@ -80,6 +80,12 @@ impl BigIntWires {
         Ok(Self { bits })
     }
 
+    pub fn mark_as_output(&self, circuit: &mut Circuit) {
+        self.bits.iter().for_each(|wire_bit| {
+            circuit.make_wire_output(*wire_bit);
+        });
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         self.bits.len()
@@ -132,7 +138,10 @@ impl BigIntWires {
         self
     }
 
-    pub fn get_wire_bits_fn(&self, u: &BigUint) -> Result<impl Fn(WireId) -> Option<bool>, Error> {
+    pub fn get_wire_bits_fn(
+        &self,
+        u: &BigUint,
+    ) -> Result<impl Fn(WireId) -> Option<bool> + use<>, Error> {
         let bits = bits_from_biguint_with_len(u, self.bits.len())?;
 
         let mapping = (0..self.bits.len())
