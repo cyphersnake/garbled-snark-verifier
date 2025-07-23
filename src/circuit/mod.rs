@@ -73,6 +73,7 @@
 //! ### Phase 4: Finalization ([`FinalizedCircuit`])
 //! - **Commitment Mechanism**: Uses Blake3 cryptographic hash function for commit output wires (PoC Only)
 //! - Allows you to check if the garbled circuit is correct and if the input and commit outputs match
+//! - It is supposed to be sent to the other party
 
 pub mod commitment;
 pub mod errors;

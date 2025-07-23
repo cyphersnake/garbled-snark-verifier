@@ -454,63 +454,63 @@ pub trait Fp254Impl {
         result
     }
 
-    fn div6(_circuit: &mut Circuit, _a: &BigIntWires) -> BigIntWires {
-        todo!()
-        //assert_eq!(a.len(), Self::N_BITS);
+    fn div6(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
+        assert_eq!(a.len(), Self::N_BITS);
 
-        //let half = Self::half(circuit, a);
-        //let mut result = BigIntWires::new(circuit, a.len(), false, false);
-        //let mut r1 = circuit.get_false_wire_constant();
-        //let mut r2 = circuit.get_false_wire_constant();
+        let half = Self::half(circuit, a);
+        let mut result = BigIntWires::new(circuit, a.len(), false, false);
+        let mut r1 = circuit.get_false_wire_constant();
+        let mut r2 = circuit.get_false_wire_constant();
 
-        //for i in 0..Self::N_BITS {
-        //    // msb to lsb
-        //    let j = Self::N_BITS - 1 - i;
+        for i in 0..Self::N_BITS {
+            // msb to lsb
+            let j = Self::N_BITS - 1 - i;
 
-        //    // result wire
-        //    let r2_and_hj = circuit.issue_wire();
+            // result wire
+            let r2_and_hj = circuit.issue_wire();
 
-        //    circuit.add_gate(Gate::and(
-        //        r2.clone(),
-        //        half.get(j).unwrap(),
-        //        r2_and_hj.clone(),
-        //    ));
-        //    let result_wire = circuit.issue_wire();
+            circuit.add_gate(Gate::and(r2, half.get(j).unwrap(), r2_and_hj));
+            let result_wire = circuit.issue_wire();
 
-        //    circuit.add_gate(Gate::or(r1.clone(), r2_and_hj.clone(), result_wire.clone()));
+            circuit.add_gate(Gate::or(r1, r2_and_hj, result_wire));
 
-        //    result[j] = result_wire.clone();
+            result.set(j, result_wire);
 
-        //    // update r1 r2 values
-        //    let not_hj = circuit.issue_wire();
-        //    let not_r2 = circuit.issue_wire();
+            //let not_hj = circuit.issue_wire();
+            //circuit.add_gate(Gate::not(half[j].clone(), not_hj.clone()));
+            //r1 = circuit.selector(not_r2.clone(), r2.clone(), result_wire.clone());
+            let new_r1 = circuit.issue_wire();
+            circuit.add_gate(Gate::xor(r2, result_wire, new_r1));
+            r1 = new_r1;
 
-        //    circuit.add_gate(Gate::not(half[j].clone(), not_hj.clone()));
-        //    circuit.add_gate(Gate::not(r2.clone(), not_r2.clone()));
+            //let not_r2 = circuit.issue_wire();
+            //circuit.add_gate(Gate::not(r2.clone(), not_r2.clone()));
+            //r2 = circuit.selector(not_hj.clone(), half[j].clone(), result_wire.clone());
+            let new_r2 = circuit.issue_wire();
+            circuit.add_gate(Gate::xor(half.get(j).unwrap(), result_wire, new_r2));
+            r2 = new_r2;
 
-        //    r1 = circuit.selector(not_r2.clone(), r2.clone(), result_wire.clone());
-        //    r2 = circuit.selector(not_hj.clone(), half[j].clone(), result_wire.clone());
+            // special case if 1 0 0 then 0 1 instead of 1 1 so we need to not r1 if 1 0 0 is the case
 
-        //    // special case if 1 0 0 then 0 1 instead of 1 1 so we need to not r1 if 1 0 0 is the case
-        //    let not_r1 = circuit.issue_wire();
+            let edge_case = circuit.issue_wire();
+            circuit.add_gate(Gate::nimp(result_wire, half.get(j).unwrap(), edge_case));
 
-        //    circuit.add_gate(Gate::not(r1.clone(), not_r1));
+            //let not_r1 = circuit.issue_wire();
+            //circuit.add_gate(Gate::not(r1.clone(), not_r1));
+            //r1 = circuit.selector(not_r1.clone(), r1.clone(), edge_case);
+            let new_r1 = circuit.issue_wire();
+            circuit.add_gate(Gate::xor(r1, edge_case, new_r1));
+            r1 = new_r1;
+        }
+        // residue for r2
+        let result_plus_one_third =
+            bigint::add_constant_without_carry(circuit, &result, &Self::one_third_modulus());
 
-        //    let edge_case = circuit.issue_wire();
+        result = bigint::select(circuit, &result_plus_one_third, &result, r2);
+        // residue for r1
+        let result_plus_two_third =
+            bigint::add_constant_without_carry(circuit, &result, &Self::two_third_modulus());
 
-        //    circuit.add_gate(Gate::and(result_wire.clone(), not_hj, edge_case.clone()));
-
-        //    r1 = circuit.selector(not_r1.clone(), r1.clone(), edge_case);
-        //}
-        //// residue for r2
-        //let result_plus_one_third =
-        //    bigint::add_constant_without_carry(circuit, &result, &Self::one_third_modulus());
-
-        //result = bigint::select(circuit, &result_plus_one_third, &result, r2);
-        //// residue for r1
-        //let result_plus_two_third =
-        //    bigint::add_constant_without_carry(circuit, &result, &Self::two_third_modulus());
-
-        //bigint::select(circuit, &result_plus_two_third, &result, r1)
+        bigint::select(circuit, &result_plus_two_third, &result, r1)
     }
 }

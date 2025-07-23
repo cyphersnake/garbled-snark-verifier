@@ -110,6 +110,14 @@ impl BigIntWires {
         self.bits.get(index).copied()
     }
 
+    pub fn set(&mut self, index: usize, w: WireId) -> Option<WireId> {
+        self.bits.get_mut(index).map(|entry| {
+            let old = *entry;
+            *entry = w;
+            old
+        })
+    }
+
     pub fn split_at(mut self, index: usize) -> (BigIntWires, BigIntWires) {
         let right_bits = self.bits.split_off(index);
 
