@@ -1,6 +1,6 @@
 use std::iter;
 
-use super::{select, BigIntWires, BigUint};
+use super::{BigIntWires, BigUint, select};
 use crate::{Circuit, Gate, WireId};
 
 pub fn add_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
@@ -181,7 +181,7 @@ pub fn odd_part(circuit: &mut Circuit, a: &BigIntWires) -> (BigIntWires, BigIntW
 
     let mut odd_acc = a.clone(); // needs `Clone` on BigIntWires
 
-    for i in 1..a.len() {
+    for i in 0..a.len() {
         let half_res = half(circuit, &odd_acc);
         odd_acc = select(circuit, &odd_acc, &half_res, select_bn.get(i).unwrap());
     }
@@ -191,6 +191,8 @@ pub fn odd_part(circuit: &mut Circuit, a: &BigIntWires) -> (BigIntWires, BigIntW
 
 #[cfg(test)]
 mod tests {
+
+    use std::collections::HashMap;
 
     use test_log::test;
 
@@ -371,5 +373,67 @@ mod tests {
     #[test]
     fn test_half_max_value() {
         test_single_input_operation(NUM_BITS, 15, 7, half);
+    }
+
+    #[test]
+    fn test_odd_part_power_of_two() {
+        // Input: 8 (binary 1000)
+        // Expected: odd_part = 1 (0001), k = 8 (1000)
+        let mut circuit = Circuit::default();
+        let a = BigIntWires::new(&mut circuit, NUM_BITS, true, false);
+        let (odd_result, k_result) = odd_part(&mut circuit, &a);
+
+        odd_result.mark_as_output(&mut circuit);
+        k_result.mark_as_output(&mut circuit);
+
+        let input_val = BigUint::from(8u64);
+        let expected_odd = BigUint::from(1u64); // 8 >> 3
+        let expected_k = BigUint::from(8u64); // 1 << 3
+
+        let a_input = a.get_wire_bits_fn(&input_val).unwrap();
+        let expected_odd_fn = odd_result.get_wire_bits_fn(&expected_odd).unwrap();
+        let expected_k_fn = k_result.get_wire_bits_fn(&expected_k).unwrap();
+
+        let mut actual_odd_bits = HashMap::new();
+        let mut actual_k_bits = HashMap::new();
+
+        circuit
+            .simple_evaluate(a_input)
+            .unwrap()
+            .for_each(|(wire_id, value)| {
+                if odd_result.bits.contains(&wire_id) {
+                    actual_odd_bits.insert(wire_id, value);
+                } else if k_result.bits.contains(&wire_id) {
+                    actual_k_bits.insert(wire_id, value);
+                } else {
+                    unreachable!("{wire_id}: {value}");
+                }
+            });
+
+        let (expected_odd, actual_odd): (String, String) = odd_result
+            .bits
+            .iter()
+            .map(|wire_id| {
+                (
+                    (expected_odd_fn)(*wire_id).unwrap(),
+                    *actual_odd_bits.get(wire_id).unwrap(),
+                )
+            })
+            .map(|(l, r)| (if l { "1" } else { "0" }, if r { "1" } else { "0" }))
+            .unzip();
+
+        let (expected_k, actual_k): (String, String) = k_result
+            .bits
+            .iter()
+            .map(|wire_id| {
+                (
+                    (expected_k_fn)(*wire_id).unwrap(),
+                    *actual_k_bits.get(wire_id).unwrap(),
+                )
+            })
+            .map(|(l, r)| (if l { "1" } else { "0" }, if r { "1" } else { "0" }))
+            .unzip();
+
+        assert_eq!((expected_odd, expected_k), (actual_odd, actual_k));
     }
 }

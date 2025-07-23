@@ -5,7 +5,7 @@ use num_bigint::{BigInt, BigUint};
 use num_traits::{One, Zero};
 
 use super::super::bigint::{self, BigIntWires};
-use crate::{math::montgomery::calculate_montgomery_constants, Circuit, Gate, WireId};
+use crate::{Circuit, Gate, WireId, math::montgomery::calculate_montgomery_constants};
 
 /// Core trait for BN254 field implementation with 254-bit prime field arithmetic
 /// Provides constants and operations for field elements in Montgomery form
@@ -181,16 +181,16 @@ pub trait Fp254Impl {
     }
 
     /// Montgomery multiplication for circuit wires
-    /// 
+    ///
     /// Performs multiplication of two field elements in Montgomery form:
     /// `(a_mont * b_mont) * R^-1 mod p` where both inputs are in Montgomery form.
     /// The result is also in Montgomery form.
-    /// 
+    ///
     /// # Arguments
     /// * `circuit` - Circuit to add gates to
     /// * `a` - First operand in Montgomery form
     /// * `b` - Second operand in Montgomery form
-    /// 
+    ///
     /// # Returns
     /// Product in Montgomery form
     fn mul_montgomery(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> BigIntWires {
@@ -202,10 +202,10 @@ pub trait Fp254Impl {
     }
 
     /// Convert field element to Montgomery form
-    /// 
+    ///
     /// # Arguments
     /// * `a` - Field element in standard form
-    /// 
+    ///
     /// # Returns
     /// Field element in Montgomery form (a * R mod p)
     fn as_montgomery(a: ark_bn254::Fq) -> ark_bn254::Fq {
@@ -213,16 +213,16 @@ pub trait Fp254Impl {
     }
 
     /// Montgomery multiplication by constant for circuit wires
-    /// 
+    ///
     /// Multiplies a Montgomery form wire by a standard form constant:
     /// `(a_mont * b) * R^-1 mod p` where `a_mont` is in Montgomery form and `b` is standard.
     /// The result is in Montgomery form.
-    /// 
+    ///
     /// # Arguments
     /// * `circuit` - Circuit to add gates to
     /// * `a` - Wire in Montgomery form
     /// * `b` - Constant in standard form
-    /// 
+    ///
     /// # Returns
     /// Product in Montgomery form
     fn mul_by_constant_montgomery(
@@ -246,15 +246,15 @@ pub trait Fp254Impl {
     }
 
     /// Montgomery squaring for circuit wires
-    /// 
+    ///
     /// Computes the square of a Montgomery form element:
     /// `(a_mont * a_mont) * R^-1 mod p` where input is in Montgomery form.
     /// The result is also in Montgomery form.
-    /// 
+    ///
     /// # Arguments
     /// * `circuit` - Circuit to add gates to  
     /// * `a` - Wire in Montgomery form
-    /// 
+    ///
     /// # Returns
     /// Square in Montgomery form
     fn square_montgomery(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {
@@ -262,17 +262,17 @@ pub trait Fp254Impl {
     }
 
     /// Montgomery reduction for circuit wires
-    /// 
+    ///
     /// Reduces a double-width product to single-width Montgomery form.
     /// Takes a 508-bit result from multiplication and reduces it to 254-bit Montgomery form
     /// using the Montgomery reduction algorithm: `x * R^-1 mod p`.
-    /// 
+    ///
     /// This is the core operation that enables efficient Montgomery multiplication.
-    /// 
+    ///
     /// # Arguments
     /// * `circuit` - Circuit to add gates to
     /// * `x` - Double-width (508-bit) multiplication result
-    /// 
+    ///
     /// # Returns
     /// Single-width (254-bit) result in Montgomery form
     fn montgomery_reduce(circuit: &mut Circuit, x: &BigIntWires) -> BigIntWires {
@@ -354,8 +354,7 @@ pub trait Fp254Impl {
             let v1 = v.clone();
             let r1 = r.clone();
             let s1 = bigint::double_without_overflow(circuit, &s);
-            let k1 =
-                bigint::add_constant_without_carry(circuit, &k, &BigUint::from_str("1").unwrap());
+            let k1 = bigint::add_constant_without_carry(circuit, &k, &BigUint::one());
 
             // part2
             let u2 = u.clone();
@@ -465,20 +464,20 @@ pub trait Fp254Impl {
     }
 
     /// Modular inverse in Montgomery form for circuit wires
-    /// 
+    ///
     /// Computes the modular inverse of a Montgomery form element.
     /// Given `a_mont` in Montgomery form, returns `a_mont^-1` also in Montgomery form.
-    /// 
+    ///
     /// The implementation first converts to standard form, computes the inverse,
     /// then converts back to Montgomery form with appropriate scaling.
-    /// 
+    ///
     /// # Arguments
     /// * `circuit` - Circuit to add gates to
     /// * `a` - Wire in Montgomery form (must be non-zero)
-    /// 
+    ///
     /// # Returns
     /// Modular inverse in Montgomery form
-    /// 
+    ///
     /// # Panics
     /// Will panic if the input is zero (no modular inverse exists)
     fn inverse_montgomery(circuit: &mut Circuit, a: &BigIntWires) -> BigIntWires {

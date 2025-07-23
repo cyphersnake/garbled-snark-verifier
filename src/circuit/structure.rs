@@ -1,6 +1,6 @@
 use bitvec::prelude::*;
 
-use crate::{core::gate_type::GateCount, Gate, WireId};
+use crate::{Gate, WireId, core::gate_type::GateCount};
 
 #[derive(Clone, Debug)]
 pub struct Circuit {

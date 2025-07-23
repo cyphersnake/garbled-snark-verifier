@@ -1,7 +1,7 @@
-use crate::Circuit;
-
 #[cfg(test)]
 use rand::Rng;
+
+use crate::Circuit;
 
 impl Circuit {
     #[cfg(test)]
@@ -18,18 +18,27 @@ impl Circuit {
             .check_correctness()
             .unwrap_or_else(|err| panic!("Circuit not correct with {err:#?}"))
             .iter_output()
-            .for_each(|(wire_id, res)| assert!(get_expected_output(wire_id) == Some(res)));
+            .for_each(|(wire_id, res)| {
+                assert_eq!(
+                    get_expected_output(wire_id),
+                    Some(res),
+                    "{wire_id} not found or not equal"
+                )
+            });
     }
 }
 
 #[cfg(test)]
 mod failure_tests {
-    use super::super::evaluation::Error;
-    use super::Circuit;
-    use crate::test_utils::trng;
-    use crate::{CircuitError, Gate, GateError, GateType, WireId, core::gate::CorrectnessError};
-    use rand::{Rng, SeedableRng};
     use std::collections::HashMap;
+
+    use rand::{Rng, SeedableRng};
+
+    use super::{super::evaluation::Error, Circuit};
+    use crate::{
+        CircuitError, Gate, GateError, GateType, WireId, core::gate::CorrectnessError,
+        test_utils::trng,
+    };
 
     #[test]
     fn test_missing_input_failure() {
