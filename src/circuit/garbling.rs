@@ -1,9 +1,9 @@
 use rand::Rng;
 
 use super::{
-    errors::CircuitError, evaluation::EvaluatedCircuit, structure::Circuit, Error, FinalizedCircuit,
+    Error, FinalizedCircuit, errors::CircuitError, evaluation::EvaluatedCircuit, structure::Circuit,
 };
-use crate::{Delta, GarbledWire, GarbledWires, WireId, S};
+use crate::{Delta, GarbledWire, GarbledWires, S, WireId};
 
 type DefaultHasher = blake3::Hasher;
 
@@ -30,7 +30,7 @@ impl Circuit {
             self.gates.len()
         );
 
-        let delta = Delta::generate();
+        let delta = Delta::generate_with(rng);
 
         let mut wires = GarbledWires::new(self.num_wire);
         let mut issue_fn = || GarbledWire::random(rng, &delta);

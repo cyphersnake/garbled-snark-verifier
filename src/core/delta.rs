@@ -30,7 +30,12 @@ impl Delta {
     /// This ensures that XOR-ing with delta flips the LSB of the last byte,
     /// enabling safe use of point-and-permute.
     pub fn generate() -> Self {
-        let mut s = rng().random::<[u8; 32]>();
+        let mut rng = rng();
+        Self::generate_with(&mut rng)
+    }
+
+    pub fn generate_with(rng: &mut impl Rng) -> Self {
+        let mut s = rng.r#gen::<[u8; 32]>();
         s[31] |= 1; // set LSB of last byte
         Self(S(s))
     }
