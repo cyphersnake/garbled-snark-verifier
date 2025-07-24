@@ -1,6 +1,7 @@
 use std::sync::{OnceLock, RwLock};
 
 use bitvec::prelude::*;
+use log::debug;
 
 use super::{BigIntWires, BigUint};
 use crate::{Circuit, Gate, GateType, WireId};
@@ -87,11 +88,7 @@ pub fn mul_generic(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires) -> B
     let len = a.len();
 
     let mut result_bits: Vec<_> = (0..(len * 2))
-        .map(|_| {
-            let wire = circuit.issue_wire();
-            circuit.add_gate(Gate::new(GateType::Nimp, a.bits[0], a.bits[0], wire));
-            wire
-        })
+        .map(|_| circuit.get_false_wire_constant())
         .collect();
 
     for (i, &current_bit) in b.iter().enumerate() {
@@ -132,12 +129,7 @@ fn mul_karatsuba_generic_impl(
         return mul_generic(circuit, a, b);
     }
 
-    let mut result_bits = Vec::with_capacity(len * 2);
-    for _ in 0..len * 2 {
-        let wire = circuit.issue_wire();
-        circuit.add_gate(Gate::new(GateType::Nimp, a.bits[0], a.bits[0], wire));
-        result_bits.push(wire);
-    }
+    let mut result_bits = vec![circuit.get_false_wire_constant(); len * 2];
 
     let len_0 = len / 2;
     let len_1 = len.div_ceil(2);
@@ -214,6 +206,7 @@ pub fn mul_karatsuba_generic(
     let len = a.len();
 
     if len < 5 {
+        debug!("mul_karatsuba_generic: <5 case");
         return mul_generic(circuit, a, b);
     }
 
