@@ -1,3 +1,4 @@
+use blake3;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 
@@ -7,7 +8,8 @@ use crate::{Circuit, S, circuit::garbling::GarbledCircuitHashes};
 pub struct GarbledCopy {
     pub seed: [u8; 32],
     pub hashes: GarbledCircuitHashes,
-    pub ciphertexts: Vec<S>,
+    pub ciphertext_hash: S,
+    pub ciphertexts: Option<Vec<S>>,
 }
 
 #[derive(Debug)]
@@ -36,18 +38,24 @@ impl VerifierState {
         copy: GarbledCopy,
     ) -> Result<(), String> {
         if self.eval_indices.contains(&index) {
-            self.stored_ciphertexts.insert(index, copy.ciphertexts);
+            let cts = copy.ciphertexts.ok_or("missing ciphertexts")?;
+            let mut h = blake3::Hasher::new();
+            for ct in &cts {
+                h.update(&ct.0);
+            }
+            if S(*h.finalize().as_bytes()) != copy.ciphertext_hash {
+                return Err("table hash mismatch".into());
+            }
+            self.stored_ciphertexts.insert(index, cts);
             Ok(())
         } else {
-            let recomputed = circuit
-                .garble_from_seed(copy.seed)
+            let (recomputed, hashes) = circuit
+                .garble_from_seed_with_commit(copy.seed)
                 .map_err(|e| format!("garbling failed: {e:?}"))?;
-            if recomputed.garbled_table != copy.ciphertexts {
-                return Err("ciphertext mismatch".into());
-            }
-            if recomputed.hashes() != copy.hashes {
+            if hashes != copy.hashes || hashes.table_hash != copy.ciphertext_hash {
                 return Err("hash mismatch".into());
             }
+            drop(recomputed);
             Ok(())
         }
     }

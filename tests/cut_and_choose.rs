@@ -38,11 +38,13 @@ fn test_verifier_detects_wrong_seed() {
     let mut seed = [0u8; 32];
     rng.fill_bytes(&mut seed);
     let mut copy = {
-        let g = circuit.garble_from_seed(seed).unwrap();
+        let (g, hashes) = circuit.garble_from_seed_with_commit(seed).unwrap();
+        let table_hash = hashes.table_hash;
         GarbledCopy {
             seed,
-            hashes: g.hashes(),
-            ciphertexts: g.garbled_table.clone(),
+            hashes,
+            ciphertext_hash: table_hash,
+            ciphertexts: Some(g.garbled_table.clone()),
         }
     };
     // corrupt seed
@@ -64,11 +66,12 @@ fn test_full_protocol_honest() {
             for i in 0..num {
                 let mut seed = [0u8; 32];
                 rng.fill_bytes(&mut seed);
-                let gc = circuit.garble_from_seed(seed).unwrap();
+                let (gc, hashes) = circuit.garble_from_seed_with_commit(seed).unwrap();
                 let copy = GarbledCopy {
                     seed,
-                    hashes: gc.hashes(),
-                    ciphertexts: gc.garbled_table.clone(),
+                    hashes: hashes.clone(),
+                    ciphertext_hash: hashes.table_hash,
+                    ciphertexts: Some(gc.garbled_table.clone()),
                 };
                 tx.send((i, copy)).unwrap();
             }
