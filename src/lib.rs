@@ -1,5 +1,6 @@
 mod circuit;
 mod core;
+mod cut_and_choose;
 mod gadgets;
 mod math;
 
@@ -12,6 +13,7 @@ pub use core::{
 };
 
 pub use circuit::{Circuit, CircuitError, EvaluatedCircuit, FinalizedCircuit, GarbledCircuit};
+pub use cut_and_choose::{run_cut_and_choose, EvalSeed};
 pub use math::*;
 
 #[cfg(test)]

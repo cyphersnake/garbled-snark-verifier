@@ -30,7 +30,7 @@ impl Circuit {
             self.gates.len()
         );
 
-        let delta = Delta::generate();
+        let delta = Delta::generate_with(rng);
 
         let mut wires = GarbledWires::new(self.num_wire);
         let mut issue_fn = || GarbledWire::random(rng, &delta);
@@ -203,5 +203,19 @@ impl GarbledCircuit {
             output_wires,
             self.garbled_table.clone(),
         ))
+    }
+
+    /// Commit to all output wires by hashing both garbled labels.
+    pub fn commit_output_labels(&self) -> crate::circuit::commitment::Commit {
+        use crate::circuit::commitment::commit_labels;
+        let labels = self
+            .structure
+            .output_wires
+            .iter()
+            .map(|id| {
+                let w = self.wires.get(*id).unwrap();
+                (w.label0, w.label1)
+            });
+        commit_labels(labels)
     }
 }
