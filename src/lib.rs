@@ -2,6 +2,7 @@ mod circuit;
 mod core;
 mod gadgets;
 mod math;
+mod protocol;
 
 pub use core::{
     delta::Delta,
@@ -13,6 +14,7 @@ pub use core::{
 
 pub use circuit::{Circuit, CircuitError, EvaluatedCircuit, FinalizedCircuit, GarbledCircuit};
 pub use math::*;
+pub use protocol::cut_and_choose::{GarbledCopy, VerifierState};
 
 #[cfg(test)]
 pub mod test_utils {

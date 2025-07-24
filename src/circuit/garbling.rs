@@ -1,9 +1,9 @@
 use rand::Rng;
 
 use super::{
-    errors::CircuitError, evaluation::EvaluatedCircuit, structure::Circuit, Error, FinalizedCircuit,
+    Error, FinalizedCircuit, errors::CircuitError, evaluation::EvaluatedCircuit, structure::Circuit,
 };
-use crate::{Delta, GarbledWire, GarbledWires, WireId, S};
+use crate::{Delta, GarbledWire, GarbledWires, S, WireId};
 
 type DefaultHasher = blake3::Hasher;
 
@@ -15,7 +15,20 @@ pub struct GarbledCircuit {
     pub garbled_table: Vec<S>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GarbledCircuitHashes {
+    pub input_hashes: Vec<(WireId, (S, S))>,
+    pub output_hashes: Vec<(WireId, S)>,
+    pub table_hash: S,
+}
+
 impl Circuit {
+    pub fn garble_from_seed(&self, seed: [u8; 32]) -> Result<GarbledCircuit, CircuitError> {
+        use rand_chacha::rand_core::SeedableRng;
+        let mut rng = rand_chacha::ChaCha20Rng::from_seed(seed);
+        self.garble(&mut rng)
+    }
+
     pub fn garble(&self, rng: &mut impl Rng) -> Result<GarbledCircuit, CircuitError> {
         self.garble_with::<DefaultHasher>(rng)
     }
@@ -30,7 +43,7 @@ impl Circuit {
             self.gates.len()
         );
 
-        let delta = Delta::generate();
+        let delta = Delta::generate_with(rng);
 
         let mut wires = GarbledWires::new(self.num_wire);
         let mut issue_fn = || GarbledWire::random(rng, &delta);
@@ -88,6 +101,46 @@ impl Circuit {
 }
 
 impl GarbledCircuit {
+    pub fn hashes(&self) -> GarbledCircuitHashes {
+        fn hash_label<H: digest::Digest + Default>(label: &S) -> S {
+            let mut out = [0u8; 32];
+            out.copy_from_slice(&H::default().chain_update(label.0).finalize()[..32]);
+            S(out)
+        }
+
+        let mut input_hashes = Vec::new();
+        for &wire_id in [
+            self.structure.get_false_wire_constant(),
+            self.structure.get_true_wire_constant(),
+        ]
+        .iter()
+        .chain(self.structure.input_wires.iter())
+        {
+            let wire = self.wires.get(wire_id).unwrap();
+            let h0 = hash_label::<DefaultHasher>(&wire.label0);
+            let h1 = hash_label::<DefaultHasher>(&wire.label1);
+            input_hashes.push((wire_id, (h0, h1)));
+        }
+
+        let mut output_hashes = Vec::new();
+        for &wire_id in &self.structure.output_wires {
+            let wire = self.wires.get(wire_id).unwrap();
+            let h1 = hash_label::<DefaultHasher>(&wire.label1);
+            output_hashes.push((wire_id, h1));
+        }
+
+        let mut th = DefaultHasher::default();
+        for ct in &self.garbled_table {
+            th.update(&ct.0);
+        }
+        let table_hash = S(*th.finalize().as_bytes());
+
+        GarbledCircuitHashes {
+            input_hashes,
+            output_hashes,
+            table_hash,
+        }
+    }
     pub fn evaluate(
         &self,
         get_input: impl Fn(WireId) -> Option<bool>,
