@@ -590,4 +590,13 @@ pub trait Fp254Impl {
 
         bigint::select(circuit, &result_plus_two_third, &result, r1)
     }
+
+    fn multiplexer(
+        circuit: &mut Circuit,
+        a: &[&BigIntWires],
+        s: &[WireId],
+        w: usize,
+    ) -> BigIntWires {
+        bigint::multiplexer(circuit, a, s, w)
+    }
 }

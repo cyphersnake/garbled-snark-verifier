@@ -133,14 +133,14 @@ impl Fq {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use ark_ff::AdditiveGroup;
     use rand::Rng;
 
     use super::*;
     use crate::test_utils::trng;
 
-    fn rnd() -> ark_bn254::Fq {
+    pub fn rnd() -> ark_bn254::Fq {
         loop {
             if let Some(bn) = ark_bn254::Fq::from_random_bytes(&trng().random::<[u8; 32]>()) {
                 return bn;

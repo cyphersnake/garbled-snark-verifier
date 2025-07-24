@@ -1,7 +1,7 @@
 use num_bigint::BigUint;
 
 use super::BigIntWires;
-use crate::{Circuit, Gate, WireId, gadgets::bigint::bits_from_biguint_with_len};
+use crate::{gadgets::bigint::bits_from_biguint_with_len, Circuit, Gate, WireId};
 
 pub fn self_or_zero(circuit: &mut Circuit, a: &BigIntWires, s: WireId) -> BigIntWires {
     BigIntWires {
@@ -141,8 +141,8 @@ pub fn select(circuit: &mut Circuit, a: &BigIntWires, b: &BigIntWires, s: WireId
 
 pub fn multiplexer(
     circuit: &mut Circuit,
-    a: Vec<BigIntWires>,
-    s: Vec<WireId>,
+    a: &[&BigIntWires],
+    s: &[WireId],
     w: usize,
 ) -> BigIntWires {
     let n = 2_usize.pow(w as u32);
@@ -157,7 +157,7 @@ pub fn multiplexer(
         bits: (0..n_bits)
             .map(|i| {
                 let ith_wires = a.iter().map(|a_i| a_i.bits[i]).collect::<Vec<_>>();
-                circuit.multiplexer(&ith_wires, &s, w)
+                circuit.multiplexer(&ith_wires, s, w)
             })
             .collect(),
     }

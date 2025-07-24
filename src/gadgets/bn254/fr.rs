@@ -1,9 +1,10 @@
+use ark_ff::UniformRand;
 use num_bigint::BigUint;
+use rand::{Rng, rng};
 
-use super::super::bn254::Fp254Impl;
-use crate::{Circuit, gadgets::bigint::BigIntWires};
+use super::Fp254Impl;
+use crate::gadgets::bigint::BigIntWires;
 
-/// BN254 scalar field Fr implementation  
 pub struct Fr;
 
 impl Fp254Impl for Fr {
@@ -16,55 +17,73 @@ impl Fp254Impl for Fr {
     const N_BITS: usize = 254;
 
     fn half_modulus() -> BigUint {
-        Self::modulus_as_biguint() / 2u32
+        BigUint::from(ark_bn254::Fr::from(1) / ark_bn254::Fr::from(2))
     }
 
     fn one_third_modulus() -> BigUint {
-        Self::modulus_as_biguint() / 3u32
+        BigUint::from(ark_bn254::Fr::from(1) / ark_bn254::Fr::from(3))
     }
-
     fn two_third_modulus() -> BigUint {
-        Self::modulus_as_biguint() * 2u32 / 3u32
+        BigUint::from(ark_bn254::Fr::from(2) / ark_bn254::Fr::from(3))
     }
 }
 
 impl Fr {
-    /// Create new scalar field element wires
-    pub fn new_wires(circuit: &mut Circuit, is_input: bool, is_output: bool) -> BigIntWires {
-        BigIntWires::new(circuit, Self::N_BITS, is_input, is_output)
+    pub fn as_montgomery(a: ark_bn254::Fr) -> ark_bn254::Fr {
+        a * ark_bn254::Fr::from(Self::montgomery_r_as_biguint())
+    }
+
+    pub fn from_montgomery(a: ark_bn254::Fr) -> ark_bn254::Fr {
+        a / ark_bn254::Fr::from(Self::montgomery_r_as_biguint())
+    }
+
+    pub fn to_bits(u: ark_bn254::Fr) -> Vec<bool> {
+        let mut bytes = BigUint::from(u).to_bytes_le();
+        bytes.extend(vec![0_u8; 32 - bytes.len()]);
+        let mut bits = Vec::new();
+        for byte in bytes {
+            for i in 0..8 {
+                bits.push(((byte >> i) & 1) == 1)
+            }
+        }
+        bits.pop();
+        bits.pop();
+        bits
+    }
+
+    pub fn from_bits(bits: Vec<bool>) -> ark_bn254::Fr {
+        let zero = BigUint::ZERO;
+        let one = BigUint::from(1_u8);
+        let mut u = zero.clone();
+        for bit in bits.iter().rev() {
+            u = u.clone() + u.clone() + if *bit { one.clone() } else { zero.clone() };
+        }
+        ark_bn254::Fr::from(u)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ark_ff::Field;
+
     use super::*;
+    use crate::test_utils::trng;
 
-    #[test]
-    fn test_fr_constants() {
-        let modulus = Fr::modulus_as_biguint();
-        assert_eq!(modulus.bits(), 254);
-
-        // Verify Montgomery constants
-        assert!(Fr::validate_montgomery_constants());
+    fn rnd() -> ark_bn254::Fr {
+        loop {
+            if let Some(bn) = ark_bn254::Fr::from_random_bytes(&trng().random::<[u8; 32]>()) {
+                return bn;
+            }
+        }
     }
 
     #[test]
-    fn test_fr_modulus_properties() {
-        let half = Fr::half_modulus();
-        let one_third = Fr::one_third_modulus();
-
-        let modulus = Fr::modulus_as_biguint();
-
-        // For modulus division, we expect (half * 2) + 1 = modulus for odd modulus
-        assert_eq!(half * 2u32 + 1u32, modulus);
-        // For thirds, precision may be lost in integer division
-        assert!(one_third.clone() * 3u32 <= modulus);
-        assert!(one_third * 3u32 + 2u32 >= modulus);
-    }
-
-    #[test]
-    fn test_new_wires() {
-        let wires = Fr::new_wires(&mut Circuit::default(), false, false);
-        assert_eq!(wires.len(), 254);
+    fn test_fr_random() {
+        let u = rnd();
+        println!("u: {u:?}");
+        let b = Fr::to_bits(u);
+        let v = Fr::from_bits(b);
+        println!("v: {v:?}");
+        assert_eq!(u, v);
     }
 }

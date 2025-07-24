@@ -67,6 +67,12 @@ impl BigIntWires {
         }
     }
 
+    pub fn from_bits(bits: impl IntoIterator<Item = WireId>) -> Self {
+        Self {
+            bits: bits.into_iter().collect(),
+        }
+    }
+
     pub fn new_constant(circuit: &mut Circuit, len: usize, u: &BigUint) -> Result<Self, Error> {
         let bits = bits_from_biguint_with_len(u, len)?;
 

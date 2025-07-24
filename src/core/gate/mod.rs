@@ -1,9 +1,11 @@
+use std::fmt::{self, write};
+
 use digest;
 use log::debug;
 use rand::Rng;
 
 pub use crate::GateType;
-use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, S, WireError, WireId};
+use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
 
 type DefaultHasher = blake3::Hasher;
 
@@ -27,6 +29,16 @@ pub struct Gate {
     pub wire_b: WireId,
     pub wire_c: WireId,
     pub gate_type: GateType,
+}
+
+impl fmt::Display for Gate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:?} {} {} {}",
+            &self.gate_type, self.wire_a, self.wire_b, self.wire_c
+        )
+    }
 }
 
 impl Gate {
