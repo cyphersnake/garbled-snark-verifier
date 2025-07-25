@@ -1345,9 +1345,8 @@ pub fn multi_miller_loop_evaluate_montgomery_fast(
     (f, gate_count)
 }
 
-/* 
-// Deserialize a compressed G1 point in the circuit
-pub fn deserialize_compressed_g1_circuit(p_c: Wires, y_flag: Wirex) -> (Wires, GateCount) {
+/// Deserialize a compressed G1 point and return the circuit without evaluating
+pub fn deserialize_compressed_g1_circuit(p_c: Wires, y_flag: Wirex) -> Circuit {
     let mut circuit = Circuit::empty();
 
     let x = p_c[0..Fq::N_BITS].to_vec();
@@ -1368,13 +1367,8 @@ pub fn deserialize_compressed_g1_circuit(p_c: Wires, y_flag: Wirex) -> (Wires, G
     circuit.add_wires(x);
     circuit.add_wires(final_y);
 
-    let n = circuit.gate_counts();
-    for mut gate in circuit.1 {
-        gate.evaluate();
-    }
-    (circuit.0, n)
+    circuit
 }
-    */
 
 pub fn deserialize_compressed_g1_circuit_evaluate(p_c: Wires, y_flag: Wirex) -> (Wires, GateCount) {
     //let mut circuit = Circuit::empty();
@@ -1408,9 +1402,8 @@ pub fn deserialize_compressed_g1_circuit_evaluate(p_c: Wires, y_flag: Wirex) -> 
 }
 
 
-/* 
-// deserialize compressed point to montgomery form
-pub fn deserialize_compressed_g2_circuit(p_c: Wires, y_flag: Wirex) -> (Wires, GateCount) {
+// deserialize compressed point to montgomery form without evaluation
+pub fn deserialize_compressed_g2_circuit(p_c: Wires, y_flag: Wirex) -> Circuit {
     let mut circuit = Circuit::empty();
 
     let x = p_c[0..Fq2::N_BITS].to_vec();
@@ -1439,13 +1432,9 @@ pub fn deserialize_compressed_g2_circuit(p_c: Wires, y_flag: Wirex) -> (Wires, G
     circuit.add_wires(x);
     circuit.add_wires(final_y_0);
     circuit.add_wires(final_y_1);
-    let n = circuit.gate_counts();
-    for mut gate in circuit.1 {
-        gate.evaluate();
-    }
-    (circuit.0, n)
+
+    circuit
 }
-*/
 
 // deserialize compressed point to montgomery form
 pub fn deserialize_compressed_g2_circuit_evaluate(p_c: Wires, y_flag: Wirex) -> (Wires, GateCount) {
