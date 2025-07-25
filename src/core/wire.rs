@@ -1,9 +1,14 @@
 use crate::core::s::S;
-use crate::core::utils::{LIMB_LEN, N_LIMBS, convert_between_blake3_and_normal_form};
+use crate::core::utils::{convert_between_blake3_and_normal_form, LIMB_LEN, N_LIMBS};
 use bitvm::{bigint::U256, hash::blake3::blake3_compute_script_with_limb, treepp::*};
+use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static WIRE_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 
 #[derive(Clone, Debug)]
 pub struct Wire {
+    pub id: u64,
     pub label0: S,
     pub label1: S,
     pub hash0: S,
@@ -24,7 +29,9 @@ impl Wire {
         let label1 = S::random();
         let hash0 = label0.hash();
         let hash1 = label1.hash();
+        let id = WIRE_COUNTER.fetch_add(1, Ordering::SeqCst);
         Self {
+            id,
             label0,
             label1,
             hash0,
