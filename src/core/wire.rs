@@ -1,7 +1,12 @@
 use crate::core::s::S;
+use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static WIRE_COUNTER: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 
 #[derive(Clone, Debug)]
 pub struct Wire {
+    pub id: u64,
     pub label0: Option<S>,
     pub label1: Option<S>,
     pub value: Option<bool>,
@@ -16,7 +21,11 @@ impl Default for Wire {
 
 impl Wire {
     pub fn new() -> Self {
+        // A strictly monotonic sequence is sufficient for assigning
+        // unique IDs, so relaxed ordering is enough here.
+        let id = WIRE_COUNTER.fetch_add(1, Ordering::Relaxed);
         Self {
+            id,
             label0: None,
             label1: None,
             value: None,

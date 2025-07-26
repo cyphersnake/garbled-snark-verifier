@@ -80,10 +80,7 @@ pub fn cyclotomic_exp_fastinv(f: ark_bn254::Fq12) -> ark_bn254::Fq12 {
 pub fn cyclotomic_exp_fast_inverse_evaluate_montgomery_fast(f: Wires) -> (Wires, GateCount) {
     let mut res = Fq12::wires_set_montgomery(ark_bn254::Fq12::ONE);
     let mut gate_count = GateCount::zero();
-    let (f_inverse, gc) = (
-        Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(f.clone()).inverse().unwrap()),
-        GateCount::fq12_inverse_montgomery(),
-    ); //Fq12::inverse(res.clone());
+    let (f_inverse, gc) = Fq12::inverse_evaluate_montgomery(f.clone());
     gate_count += gc;
     let mut found_nonzero = false;
     for value in ark_ff::biginteger::arithmetic::find_naf(ark_bn254::Config::X)
@@ -156,10 +153,7 @@ pub fn final_exponentiation(f: ark_bn254::Fq12) -> ark_bn254::Fq12 {
 
 pub fn final_exponentiation_evaluate_montgomery_fast(f: Wires) -> (Wires, GateCount) {
     let mut gate_count = GateCount::zero();
-    let (f_inv, gc) = (
-        Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(f.clone()).inverse().unwrap()),
-        GateCount::fq12_inverse_montgomery(),
-    );
+    let (f_inv, gc) = Fq12::inverse_evaluate_montgomery(f.clone());
     gate_count += gc;
     let (f_conjugate, gc) = Fq12::conjugate_evaluate(f.clone());
     gate_count += gc;

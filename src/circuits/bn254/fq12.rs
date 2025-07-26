@@ -463,6 +463,15 @@ impl Fq12 {
         circuit
     }
 
+    pub fn inverse_evaluate_montgomery(a: Wires) -> (Wires, GateCount) {
+        let circuit = Fq12::inverse_montgomery(a);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1 {
+            gate.evaluate();
+        }
+        (circuit.0, n)
+    }
+
     pub fn frobenius_montgomery(a: Wires, i: usize) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
         let mut circuit = Circuit::empty();

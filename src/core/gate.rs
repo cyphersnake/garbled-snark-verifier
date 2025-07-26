@@ -137,6 +137,12 @@ impl Gate {
             self.wire_a.borrow().get_value(),
             self.wire_b.borrow().get_value(),
         ));
+        if let Some(ref mut w) = *crate::core::serialization::GLOBAL_GATE_WRITER
+            .lock()
+            .unwrap()
+        {
+            w.record_gate(self).expect("failed to record gate");
+        }
     }
 
     pub fn garbled(&self) -> Vec<S> {

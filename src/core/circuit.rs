@@ -1,3 +1,5 @@
+use std::io;
+
 use crate::{bag::*, core::gate::GateCount};
 
 pub struct Circuit(pub Wires, pub Vec<Gate>);
@@ -42,5 +44,20 @@ impl Circuit {
             gc.0[gate.gate_type as usize] += 1;
         }
         gc
+    }
+    /// Begin streaming all subsequently evaluated gates into the given file.
+    pub fn start_gate_recording<P: AsRef<std::path::Path>>(path: P) -> io::Result<()> {
+        let writer = crate::core::serialization::GateWriter::new(path)?;
+        crate::core::serialization::install_gate_writer(writer);
+        Ok(())
+    }
+
+    /// Finish streaming gates and close the writer.
+    pub fn finish_gate_recording() -> io::Result<()> {
+        if let Some(writer) = crate::core::serialization::take_gate_writer() {
+            writer.finish()
+        } else {
+            Ok(())
+        }
     }
 }
