@@ -1,4 +1,5 @@
 use crate::bag::*;
+use crate::core::serialization::GLOBAL_GATE_WRITER;
 use crate::core::utils::{LIMB_LEN, N_LIMBS, bit_to_usize, convert_between_blake3_and_normal_form};
 use bitvm::{bigint::U256, hash::blake3::blake3_compute_script_with_limb, treepp::*};
 use std::ops::{Add, AddAssign};
@@ -160,6 +161,12 @@ impl Gate {
             self.wire_a.borrow().get_value(),
             self.wire_b.borrow().get_value(),
         ));
+        if let Some(ref mut w) = *crate::core::serialization::GLOBAL_GATE_WRITER
+            .lock()
+            .unwrap()
+        {
+            w.record_gate(self).expect("failed to record gate");
+        }
     }
 
     pub fn garbled(&self) -> Vec<S> {

@@ -1,6 +1,8 @@
+use once_cell::sync::Lazy;
 use std::fs::OpenOptions;
 use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
+use std::sync::Mutex;
 
 use crate::bag::Gate;
 
@@ -14,6 +16,55 @@ pub struct GateRecord {
     pub wire_a: u64,
     pub wire_b: u64,
     pub wire_c: u64,
+}
+
+/// Streaming writer for gates that updates the count on `finish()`.
+pub struct GateWriter {
+    writer: BufWriter<std::fs::File>,
+    count: u64,
+}
+
+impl GateWriter {
+    /// Create a new writer and truncate any existing file.
+    pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let file = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .truncate(true)
+            .open(path)?;
+        let mut writer = BufWriter::new(file);
+        writer.write_all(FILE_MAGIC)?;
+        writer.write_all(&0u64.to_le_bytes())?;
+        Ok(Self { writer, count: 0 })
+    }
+
+    /// Append a single gate record to the file.
+    pub fn record_gate(&mut self, gate: &Gate) -> io::Result<()> {
+        serialize_gate(&mut self.writer, gate)?;
+        self.count += 1;
+        Ok(())
+    }
+
+    /// Finalize writing by updating the gate count header.
+    pub fn finish(mut self) -> io::Result<()> {
+        self.writer.flush()?;
+        let file = self.writer.get_mut();
+        file.seek(SeekFrom::Start(FILE_MAGIC.len() as u64))?;
+        file.write_all(&self.count.to_le_bytes())?;
+        file.flush()
+    }
+}
+
+/// Global writer used when evaluating gates.
+pub static GLOBAL_GATE_WRITER: Lazy<Mutex<Option<GateWriter>>> = Lazy::new(|| Mutex::new(None));
+
+pub(crate) fn install_gate_writer(writer: GateWriter) {
+    *GLOBAL_GATE_WRITER.lock().unwrap() = Some(writer);
+}
+
+pub(crate) fn take_gate_writer() -> Option<GateWriter> {
+    GLOBAL_GATE_WRITER.lock().unwrap().take()
 }
 
 fn write_id<W: Write>(mut writer: W, id: u64) -> io::Result<()> {
@@ -122,6 +173,7 @@ pub fn read_gates<P: AsRef<Path>>(path: P) -> io::Result<Vec<GateRecord>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bag::Circuit;
     use crate::circuits::bn254::fp254impl::Fp254Impl;
     use crate::circuits::bn254::fq::Fq;
 
@@ -148,5 +200,25 @@ mod tests {
             records[circuit.1.len()].operation,
             circuit.1[0].gate_type as u8
         );
+    }
+
+    #[test]
+    fn test_gate_writer_stream() {
+        let a = Fq::random();
+        let b = Fq::random();
+        let circuit = Fq::mul_montgomery(
+            Fq::wires_set(Fq::as_montgomery(a)),
+            Fq::wires_set(Fq::as_montgomery(b)),
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stream.bin");
+        Circuit::start_gate_recording(&path).unwrap();
+        for mut g in circuit.1.clone() {
+            g.evaluate();
+        }
+        Circuit::finish_gate_recording().unwrap();
+        let records = read_gates(&path).unwrap();
+        assert_eq!(records.len(), circuit.1.len());
     }
 }
