@@ -59,3 +59,25 @@ this folder contains all the circuit functions. At the end, it will contain the 
 **bigint**: contains u254 circuits
 
 **bn254**: contains circuits related to bn254 curve such as field arithmetic circuits etc.
+
+### Gate Serialization Format
+
+The helper module `src/core/serialization.rs` allows dumping large
+Groth16 circuits directly to disk. A binary file is written in the
+following layout so that the whole circuit does not have to reside in
+memory:
+
+- **Header** – 4 bytes ASCII `GTV1` written once when the file is
+  created.
+- **Gate count** – 8 bytes little endian `u64` giving the total number of
+  gate records stored in the file.
+- **Gate records** – repeated for every gate in topological order:
+  - 1 byte: operation (`GateType` as `u8`)
+  - 5 bytes: little endian ID of `wire_a`
+  - 5 bytes: little endian ID of `wire_b`
+  - 5 bytes: little endian ID of `wire_c`
+
+The fixed 5‑byte encoding efficiently covers `Wire.id` values up to
+`11_000_000_000`. New gates can be appended to an existing file with
+`append_gates`; the routine updates the stored gate count and then
+appends the new records without rewriting earlier data.
