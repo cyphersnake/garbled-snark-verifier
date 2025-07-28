@@ -15,7 +15,7 @@ use garbled_snark_verifier::circuits::{
     bn254::{fr::Fr, g1::G1Affine, g2::G2Affine},
     groth16::groth16_verifier_evaluate_montgomery,
 };
-use garbled_snark_verifier::core::serialization::{GateWriter, read_gates};
+use garbled_snark_verifier::core::serialization::read_gates;
 
 #[derive(Copy, Clone)]
 struct DummyCircuit<F: PrimeField> {
