@@ -340,62 +340,23 @@ pub fn ell_coeffs_evaluate_montgomery_fast(q: Wires) -> (Vec<(Wires, Wires, Wire
     let (neg_q, gc) = g2_affine_neg_evaluate(q.clone());
     gate_count += gc;
     for bit in ark_bn254::Config::ATE_LOOP_COUNT.iter().rev().skip(1) {
-        // let (coeffs, new_r, gc) = double_in_place_evaluate_montgomery(r);
-        // ellc.push(coeffs);
-        // gate_count += gc;
-        // r = new_r;
-        let ((new_r, coeffs), gc) = (
-            double_in_place2(G2Projective::from_montgomery_wires_unchecked(r)),
-            GateCount::double_in_place_montgomery(),
-        );
-        ellc.push((
-            Fq2::wires_set_montgomery(coeffs.0),
-            Fq2::wires_set_montgomery(coeffs.1),
-            Fq2::wires_set_montgomery(coeffs.2),
-        ));
+        let (coeffs, new_r, gc) = double_in_place_evaluate_montgomery(r);
+        ellc.push(coeffs);
         gate_count += gc;
-        r = G2Projective::wires_set_montgomery(new_r);
+        r = new_r;
 
         match bit {
             1 => {
-                // let (coeffs, new_r, gc) = add_in_place_evaluate_montgomery(r, q.clone());
-                // ellc.push(coeffs);
-                // gate_count += gc;
-                // r = new_r;
-                let ((new_r, coeffs), gc) = (
-                    add_in_place2(
-                        G2Projective::from_montgomery_wires_unchecked(r),
-                        &G2Affine::from_montgomery_wires_unchecked(q.clone()),
-                    ),
-                    GateCount::add_in_place_montgomery(),
-                );
-                ellc.push((
-                    Fq2::wires_set_montgomery(coeffs.0),
-                    Fq2::wires_set_montgomery(coeffs.1),
-                    Fq2::wires_set_montgomery(coeffs.2),
-                ));
+                let (coeffs, new_r, gc) = add_in_place_evaluate_montgomery(r, q.clone());
+                ellc.push(coeffs);
                 gate_count += gc;
-                r = G2Projective::wires_set_montgomery(new_r);
+                r = new_r;
             }
             -1 => {
-                // let (coeffs, new_r, gc) = add_in_place_evaluate_montgomery(r, neg_q.clone());
-                // ellc.push(coeffs);
-                // gate_count += gc;
-                // r = new_r;
-                let ((new_r, coeffs), gc) = (
-                    add_in_place2(
-                        G2Projective::from_montgomery_wires_unchecked(r),
-                        &G2Affine::from_montgomery_wires_unchecked(neg_q.clone()),
-                    ),
-                    GateCount::add_in_place_montgomery(),
-                );
-                ellc.push((
-                    Fq2::wires_set_montgomery(coeffs.0),
-                    Fq2::wires_set_montgomery(coeffs.1),
-                    Fq2::wires_set_montgomery(coeffs.2),
-                ));
+                let (coeffs, new_r, gc) = add_in_place_evaluate_montgomery(r, neg_q.clone());
+                ellc.push(coeffs);
                 gate_count += gc;
-                r = G2Projective::wires_set_montgomery(new_r);
+                r = new_r;
             }
             _ => {}
         }
@@ -408,42 +369,14 @@ pub fn ell_coeffs_evaluate_montgomery_fast(q: Wires) -> (Vec<(Wires, Wires, Wire
     gate_count += gc;
     q2 = new_q2;
 
-    // let (coeffs, new_r, gc) = add_in_place_evaluate_montgomery(r, q1);
-    // gate_count += gc;
-    // ellc.push(coeffs);
-    // r = new_r;
-    let ((new_r, coeffs), gc) = (
-        add_in_place2(
-            G2Projective::from_montgomery_wires_unchecked(r),
-            &G2Affine::from_montgomery_wires_unchecked(q1),
-        ),
-        GateCount::add_in_place_montgomery(),
-    );
-    ellc.push((
-        Fq2::wires_set_montgomery(coeffs.0),
-        Fq2::wires_set_montgomery(coeffs.1),
-        Fq2::wires_set_montgomery(coeffs.2),
-    ));
+    let (coeffs, new_r, gc) = add_in_place_evaluate_montgomery(r, q1);
     gate_count += gc;
-    r = G2Projective::wires_set_montgomery(new_r);
+    ellc.push(coeffs);
+    r = new_r;
 
-    // let (coeffs, _new_r, gc) = add_in_place_evaluate_montgomery(r, q2);
-    // gate_count += gc;
-    // ellc.push(coeffs);
-    // // r = new_r;
-    let ((_new_r, coeffs), gc) = (
-        add_in_place2(
-            G2Projective::from_montgomery_wires_unchecked(r),
-            &G2Affine::from_montgomery_wires_unchecked(q2),
-        ),
-        GateCount::add_in_place_montgomery(),
-    );
-    ellc.push((
-        Fq2::wires_set_montgomery(coeffs.0),
-        Fq2::wires_set_montgomery(coeffs.1),
-        Fq2::wires_set_montgomery(coeffs.2),
-    ));
+    let (coeffs, _new_r, gc) = add_in_place_evaluate_montgomery(r, q2);
     gate_count += gc;
+    ellc.push(coeffs);
     // r = G2Projective::wires_set(new_r);
 
     (ellc, gate_count)
@@ -577,78 +510,31 @@ pub fn miller_loop_evaluate_montgomery_fast(p: Wires, q: Wires) -> (Wires, GateC
 
     for i in (1..ark_bn254::Config::ATE_LOOP_COUNT.len()).rev() {
         if i != ark_bn254::Config::ATE_LOOP_COUNT.len() - 1 {
-            let (new_f, gc) = (
-                Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(f).square()),
-                GateCount::fq12_square_montgomery(),
-            ); // Fq12::square_evaluate_montgomery(f);
+            let (new_f, gc) = Fq12::square_evaluate_montgomery(f);
             f = new_f;
             gate_count += gc;
         }
 
         let qell_next = q_ell.next().unwrap().clone();
-        let (new_f, gc) = (
-            Fq12::wires_set_montgomery(ell2(
-                Fq12::from_montgomery_wires(f),
-                (
-                    Fq2::from_montgomery_wires(qell_next.0),
-                    Fq2::from_montgomery_wires(qell_next.1),
-                    Fq2::from_montgomery_wires(qell_next.2),
-                ),
-                G1Affine::from_montgomery_wires_unchecked(p.clone()),
-            )),
-            GateCount::ell_montgomery(),
-        ); // ell_evaluate_montgomery(f, q_ell.next().unwrap().clone(), p.clone());
+        let (new_f, gc) = ell_evaluate_montgomery(f, qell_next, p.clone());
         f = new_f;
         gate_count += gc;
 
         let bit = ark_bn254::Config::ATE_LOOP_COUNT[i - 1];
         if bit == 1 || bit == -1 {
             let qell_next = q_ell.next().unwrap().clone();
-            let (new_f, gc) = (
-                Fq12::wires_set_montgomery(ell2(
-                    Fq12::from_montgomery_wires(f),
-                    (
-                        Fq2::from_montgomery_wires(qell_next.0),
-                        Fq2::from_montgomery_wires(qell_next.1),
-                        Fq2::from_montgomery_wires(qell_next.2),
-                    ),
-                    G1Affine::from_montgomery_wires_unchecked(p.clone()),
-                )),
-                GateCount::ell_montgomery(),
-            ); // ell_evaluate_montgomery(f, q_ell.next().unwrap().clone(), p.clone());
+            let (new_f, gc) = ell_evaluate_montgomery(f, qell_next, p.clone());
             f = new_f;
             gate_count += gc;
         }
     }
 
     let qell_next = q_ell.next().unwrap().clone();
-    let (new_f, gc) = (
-        Fq12::wires_set_montgomery(ell2(
-            Fq12::from_montgomery_wires(f),
-            (
-                Fq2::from_montgomery_wires(qell_next.0),
-                Fq2::from_montgomery_wires(qell_next.1),
-                Fq2::from_montgomery_wires(qell_next.2),
-            ),
-            G1Affine::from_montgomery_wires_unchecked(p.clone()),
-        )),
-        GateCount::ell_montgomery(),
-    ); // ell_evaluate_montgomery(f, q_ell.next().unwrap().clone(), p.clone());
+    let (new_f, gc) = ell_evaluate_montgomery(f, qell_next, p.clone());
     f = new_f;
     gate_count += gc;
     let qell_next = q_ell.next().unwrap().clone();
-    let (new_f, gc) = (
-        Fq12::wires_set_montgomery(ell2(
-            Fq12::from_montgomery_wires(f),
-            (
-                Fq2::from_montgomery_wires(qell_next.0),
-                Fq2::from_montgomery_wires(qell_next.1),
-                Fq2::from_montgomery_wires(qell_next.2),
-            ),
-            G1Affine::from_montgomery_wires_unchecked(p.clone()),
-        )),
-        GateCount::ell_montgomery(),
-    ); // ell_evaluate_montgomery(f, q_ell.next().unwrap().clone(), p.clone());
+    let (new_f, gc) = ell_evaluate_montgomery(f, qell_next, p.clone());
     f = new_f;
     gate_count += gc;
 
@@ -731,28 +617,14 @@ pub fn multi_miller_loop_evaluate_montgomery_fast(
 
     for i in (1..ark_bn254::Config::ATE_LOOP_COUNT.len()).rev() {
         if i != ark_bn254::Config::ATE_LOOP_COUNT.len() - 1 {
-            let (new_f, gc) = (
-                Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(f).square()),
-                GateCount::fq12_square_montgomery(),
-            ); // Fq12::square_evaluate_montgomery(f);
+            let (new_f, gc) = Fq12::square_evaluate_montgomery(f);
             f = new_f;
             gate_count += gc;
         }
 
         let qells_next = q_ells.next().unwrap().clone();
         for (qell_next, p) in zip(qells_next, ps.clone()) {
-            let (new_f, gc) = (
-                Fq12::wires_set_montgomery(ell2(
-                    Fq12::from_montgomery_wires(f),
-                    (
-                        Fq2::from_montgomery_wires(qell_next.0),
-                        Fq2::from_montgomery_wires(qell_next.1),
-                        Fq2::from_montgomery_wires(qell_next.2),
-                    ),
-                    G1Affine::from_montgomery_wires_unchecked(p.clone()),
-                )),
-                GateCount::ell_montgomery(),
-            ); // ell_evaluate_montgomery(f, q_ell.next().unwrap().clone(), p.clone());
+            let (new_f, gc) = ell_evaluate_montgomery(f, qell_next, p.clone());
             f = new_f;
             gate_count += gc;
         }
@@ -761,18 +633,7 @@ pub fn multi_miller_loop_evaluate_montgomery_fast(
         if bit == 1 || bit == -1 {
             let qells_next = q_ells.next().unwrap().clone();
             for (qell_next, p) in zip(qells_next, ps.clone()) {
-                let (new_f, gc) = (
-                    Fq12::wires_set_montgomery(ell2(
-                        Fq12::from_montgomery_wires(f),
-                        (
-                            Fq2::from_montgomery_wires(qell_next.0),
-                            Fq2::from_montgomery_wires(qell_next.1),
-                            Fq2::from_montgomery_wires(qell_next.2),
-                        ),
-                        G1Affine::from_montgomery_wires_unchecked(p.clone()),
-                    )),
-                    GateCount::ell_montgomery(),
-                ); // ell_evaluate_montgomery(f, q_ell.next().unwrap().clone(), p.clone());
+                let (new_f, gc) = ell_evaluate_montgomery(f, qell_next, p.clone());
                 f = new_f;
                 gate_count += gc;
             }
@@ -781,35 +642,13 @@ pub fn multi_miller_loop_evaluate_montgomery_fast(
 
     let qells_next = q_ells.next().unwrap().clone();
     for (qell_next, p) in zip(qells_next, ps.clone()) {
-        let (new_f, gc) = (
-            Fq12::wires_set_montgomery(ell2(
-                Fq12::from_montgomery_wires(f),
-                (
-                    Fq2::from_montgomery_wires(qell_next.0),
-                    Fq2::from_montgomery_wires(qell_next.1),
-                    Fq2::from_montgomery_wires(qell_next.2),
-                ),
-                G1Affine::from_montgomery_wires_unchecked(p.clone()),
-            )),
-            GateCount::ell_montgomery(),
-        ); // ell_evaluate_montgomery(f, q_ell.next().unwrap().clone(), p.clone());
+        let (new_f, gc) = ell_evaluate_montgomery(f, qell_next, p.clone());
         f = new_f;
         gate_count += gc;
     }
     let qells_next = q_ells.next().unwrap().clone();
     for (qell_next, p) in zip(qells_next, ps.clone()) {
-        let (new_f, gc) = (
-            Fq12::wires_set_montgomery(ell2(
-                Fq12::from_montgomery_wires(f),
-                (
-                    Fq2::from_montgomery_wires(qell_next.0),
-                    Fq2::from_montgomery_wires(qell_next.1),
-                    Fq2::from_montgomery_wires(qell_next.2),
-                ),
-                G1Affine::from_montgomery_wires_unchecked(p.clone()),
-            )),
-            GateCount::ell_montgomery(),
-        ); // ell_evaluate_montgomery(f, q_ell.next().unwrap().clone(), p.clone());
+        let (new_f, gc) = ell_evaluate_montgomery(f, qell_next, p.clone());
         f = new_f;
         gate_count += gc;
     }
@@ -989,175 +828,72 @@ pub fn multi_miller_loop_groth16_evaluate_montgomery_fast(
 
     for i in (1..ark_bn254::Config::ATE_LOOP_COUNT.len()).rev() {
         if i != ark_bn254::Config::ATE_LOOP_COUNT.len() - 1 {
-            let (new_f, gc) = (
-                Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(f).square()),
-                GateCount::fq12_square_montgomery(),
-            ); // Fq12::square_evaluate_montgomery(f);
+            let (new_f, gc) = Fq12::square_evaluate_montgomery(f);
             f = new_f;
             gate_count += gc;
         }
 
         let q1ell_next = q1_ell.next().unwrap();
-        let (new_f, gc) = (
-            Fq12::wires_set_montgomery(ell2(
-                Fq12::from_montgomery_wires(f),
-                *q1ell_next,
-                G1Affine::from_montgomery_wires_unchecked(p1.clone()),
-            )),
-            GateCount::ell_by_constant_montgomery(),
-        ); // ell_by_constant_evaluate_montgomery(f, q1_ell.next().unwrap().clone(), p.clone());
+        let (new_f, gc) = ell_by_constant_evaluate_montgomery(f, *q1ell_next, p1.clone());
         f = new_f;
         gate_count += gc;
 
         let q2ell_next = q2_ell.next().unwrap();
-        let (new_f, gc) = (
-            Fq12::wires_set_montgomery(ell2(
-                Fq12::from_montgomery_wires(f),
-                *q2ell_next,
-                G1Affine::from_montgomery_wires_unchecked(p2.clone()),
-            )),
-            GateCount::ell_by_constant_montgomery(),
-        ); // ell_by_constant_evaluate_montgomery(f, q2_ell.next().unwrap().clone(), p.clone());
+        let (new_f, gc) = ell_by_constant_evaluate_montgomery(f, *q2ell_next, p2.clone());
         f = new_f;
         gate_count += gc;
 
         let q3ell_next = q3_ell.next().unwrap().clone();
-        let (new_f, gc) = (
-            Fq12::wires_set_montgomery(ell2(
-                Fq12::from_montgomery_wires(f),
-                (
-                    Fq2::from_montgomery_wires(q3ell_next.0),
-                    Fq2::from_montgomery_wires(q3ell_next.1),
-                    Fq2::from_montgomery_wires(q3ell_next.2),
-                ),
-                G1Affine::from_montgomery_wires_unchecked(p3.clone()),
-            )),
-            GateCount::ell_montgomery(),
-        ); // ell_evaluate_montgomery(f, q3_ell.next().unwrap().clone(), p.clone());
+        let (new_f, gc) = ell_evaluate_montgomery(f, q3ell_next, p3.clone());
         f = new_f;
         gate_count += gc;
 
         let bit = ark_bn254::Config::ATE_LOOP_COUNT[i - 1];
         if bit == 1 || bit == -1 {
             let q1ell_next = q1_ell.next().unwrap();
-            let (new_f, gc) = (
-                Fq12::wires_set_montgomery(ell2(
-                    Fq12::from_montgomery_wires(f),
-                    *q1ell_next,
-                    G1Affine::from_montgomery_wires_unchecked(p1.clone()),
-                )),
-                GateCount::ell_by_constant_montgomery(),
-            ); // ell_by_constant_evaluate_montgomery(f, q1_ell.next().unwrap().clone(), p.clone());
+            let (new_f, gc) = ell_by_constant_evaluate_montgomery(f, *q1ell_next, p1.clone());
             f = new_f;
             gate_count += gc;
 
             let q2ell_next = q2_ell.next().unwrap();
-            let (new_f, gc) = (
-                Fq12::wires_set_montgomery(ell2(
-                    Fq12::from_montgomery_wires(f),
-                    *q2ell_next,
-                    G1Affine::from_montgomery_wires_unchecked(p2.clone()),
-                )),
-                GateCount::ell_by_constant_montgomery(),
-            ); // ell_by_constant_evaluate_montgomery(f, q2_ell.next().unwrap().clone(), p.clone());
+            let (new_f, gc) = ell_by_constant_evaluate_montgomery(f, *q2ell_next, p2.clone());
             f = new_f;
             gate_count += gc;
 
             let q3ell_next = q3_ell.next().unwrap().clone();
-            let (new_f, gc) = (
-                Fq12::wires_set_montgomery(ell2(
-                    Fq12::from_montgomery_wires(f),
-                    (
-                        Fq2::from_montgomery_wires(q3ell_next.0),
-                        Fq2::from_montgomery_wires(q3ell_next.1),
-                        Fq2::from_montgomery_wires(q3ell_next.2),
-                    ),
-                    G1Affine::from_montgomery_wires_unchecked(p3.clone()),
-                )),
-                GateCount::ell_montgomery(),
-            ); // ell_evaluate_montgomery(f, q3_ell.next().unwrap().clone(), p.clone());
+            let (new_f, gc) = ell_evaluate_montgomery(f, q3ell_next, p3.clone());
             f = new_f;
             gate_count += gc;
         }
     }
 
     let q1ell_next = q1_ell.next().unwrap();
-    let (new_f, gc) = (
-        Fq12::wires_set_montgomery(ell2(
-            Fq12::from_montgomery_wires(f),
-            *q1ell_next,
-            G1Affine::from_montgomery_wires_unchecked(p1.clone()),
-        )),
-        GateCount::ell_by_constant_montgomery(),
-    ); // ell_by_constant_evaluate_montgomery(f, q1_ell.next().unwrap().clone(), p.clone());
+    let (new_f, gc) = ell_by_constant_evaluate_montgomery(f, *q1ell_next, p1.clone());
     f = new_f;
     gate_count += gc;
 
     let q2ell_next = q2_ell.next().unwrap();
-    let (new_f, gc) = (
-        Fq12::wires_set_montgomery(ell2(
-            Fq12::from_montgomery_wires(f),
-            *q2ell_next,
-            G1Affine::from_montgomery_wires_unchecked(p2.clone()),
-        )),
-        GateCount::ell_by_constant_montgomery(),
-    ); // ell_by_constant_evaluate_montgomery(f, q2_ell.next().unwrap().clone(), p.clone());
+    let (new_f, gc) = ell_by_constant_evaluate_montgomery(f, *q2ell_next, p2.clone());
     f = new_f;
     gate_count += gc;
 
     let q3ell_next = q3_ell.next().unwrap().clone();
-    let (new_f, gc) = (
-        Fq12::wires_set_montgomery(ell2(
-            Fq12::from_montgomery_wires(f),
-            (
-                Fq2::from_montgomery_wires(q3ell_next.0),
-                Fq2::from_montgomery_wires(q3ell_next.1),
-                Fq2::from_montgomery_wires(q3ell_next.2),
-            ),
-            G1Affine::from_montgomery_wires_unchecked(p3.clone()),
-        )),
-        GateCount::ell_montgomery(),
-    ); // ell_evaluate_montgomery(f, q3_ell.next().unwrap().clone(), p.clone());
+    let (new_f, gc) = ell_evaluate_montgomery(f, q3ell_next, p3.clone());
     f = new_f;
     gate_count += gc;
 
     let q1ell_next = q1_ell.next().unwrap();
-    let (new_f, gc) = (
-        Fq12::wires_set_montgomery(ell2(
-            Fq12::from_montgomery_wires(f),
-            *q1ell_next,
-            G1Affine::from_montgomery_wires_unchecked(p1.clone()),
-        )),
-        GateCount::ell_by_constant_montgomery(),
-    ); // ell_by_constant_evaluate_montgomery(f, q1_ell.next().unwrap().clone(), p.clone());
+    let (new_f, gc) = ell_by_constant_evaluate_montgomery(f, *q1ell_next, p1.clone());
     f = new_f;
     gate_count += gc;
 
     let q2ell_next = q2_ell.next().unwrap();
-    let (new_f, gc) = (
-        Fq12::wires_set_montgomery(ell2(
-            Fq12::from_montgomery_wires(f),
-            *q2ell_next,
-            G1Affine::from_montgomery_wires_unchecked(p2.clone()),
-        )),
-        GateCount::ell_by_constant_montgomery(),
-    ); // ell_by_constant_evaluate_montgomery(f, q2_ell.next().unwrap().clone(), p.clone());
+    let (new_f, gc) = ell_by_constant_evaluate_montgomery(f, *q2ell_next, p2.clone());
     f = new_f;
     gate_count += gc;
 
     let q3ell_next = q3_ell.next().unwrap().clone();
-    let (new_f, gc) = (
-        Fq12::wires_set_montgomery(ell2(
-            Fq12::from_montgomery_wires(f),
-            (
-                Fq2::from_montgomery_wires(q3ell_next.0),
-                Fq2::from_montgomery_wires(q3ell_next.1),
-                Fq2::from_montgomery_wires(q3ell_next.2),
-            ),
-            G1Affine::from_montgomery_wires_unchecked(p3.clone()),
-        )),
-        GateCount::ell_montgomery(),
-    ); // ell_evaluate_montgomery(f, q3_ell.next().unwrap().clone(), p.clone());
+    let (new_f, gc) = ell_evaluate_montgomery(f, q3ell_next, p3.clone());
     f = new_f;
     gate_count += gc;
 

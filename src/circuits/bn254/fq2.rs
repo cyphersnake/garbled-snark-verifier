@@ -6,7 +6,7 @@ use crate::{
 use ark_ff::{Field, Fp2Config, UniformRand};
 use ark_std::rand::SeedableRng;
 use num_traits::Zero;
-use rand::{Rng, rng};
+use rand::{rng, Rng};
 use rand_chacha::ChaCha20Rng;
 
 pub struct Fq2;
@@ -471,7 +471,7 @@ impl Fq2 {
         let delta_plus = circuit.extend(Fq::add(alpha_sqrt.clone(), c0.clone())); // α + c0
         let delta = circuit.extend(Fq::half(delta_plus)); // (α + c0)/2
 
-        let is_qnr = circuit.extend(Fq::is_qnr_montgomery(delta.clone())); // δ is a qnr 
+        let is_qnr = circuit.extend(Fq::is_qnr_montgomery(delta.clone())); // δ is a qnr
 
         let delta_alt = circuit.extend(Fq::sub(delta.clone(), alpha_sqrt)); // δ - α
 
@@ -507,7 +507,7 @@ impl Fq2 {
         let (delta, add_gc) = Fq::half_evaluate(delta_plus); // (α + c0)/2
         gc += add_gc;
 
-        let (is_qnr, add_gc) = Fq::is_qnr_montgomery_evaluate(delta.clone()); // δ is a qnr 
+        let (is_qnr, add_gc) = Fq::is_qnr_montgomery_evaluate(delta.clone()); // δ is a qnr
         gc += add_gc;
 
         let (delta_alt, add_gc) = Fq::sub_eval(delta.clone(), alpha_sqrt); // δ - α

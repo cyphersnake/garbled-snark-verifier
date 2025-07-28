@@ -210,6 +210,15 @@ impl Fq12 {
         (circuit.0, n)
     }
 
+    pub fn square_evaluate_montgomery(a: Wires) -> (Wires, GateCount) {
+        let circuit = Fq12::square_montgomery(a);
+        let n = circuit.gate_counts();
+        for mut gate in circuit.1 {
+            gate.evaluate();
+        }
+        (circuit.0, n)
+    }
+
     pub fn mul_by_constant_montgomery(a: Wires, b: ark_bn254::Fq12) -> Circuit {
         assert_eq!(a.len(), Self::N_BITS);
         let mut circuit = Circuit::empty();

@@ -72,14 +72,7 @@ pub fn groth16_verifier_evaluate_montgomery(
         assert_eq!(proof_c.len(), 2 * Fq::N_BITS);
     }
 
-    let (msm_temp, gc) = (
-        G1Projective::wires_set_montgomery(
-            ark_bn254::G1Projective::msm(&[vk.gamma_abc_g1[1]], &[Fr::from_wires(public.clone())])
-                .unwrap(),
-        ),
-        GateCount::msm_montgomery(),
-    );
-    // let (msm_temp, gc) = G1Projective::msm_with_constant_bases_evaluate_montgomery::<10>(vec![public], vec![vk.gamma_abc_g1[1].into_group()]);
+    let (msm_temp, gc) = G1Projective::msm_with_constant_bases_evaluate_montgomery::<10>(vec![public], vec![vk.gamma_abc_g1[1].into_group()]);
     gate_count += gc;
     let (msm, gc) = G1Projective::add_evaluate_montgomery(
         msm_temp,

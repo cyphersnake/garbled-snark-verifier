@@ -34,10 +34,7 @@ pub fn cyclotomic_exp_evaluate_montgomery_fast(f: Wires) -> (Wires, GateCount) {
         .collect::<Vec<_>>()
     {
         if found_nonzero {
-            let (wires1, gc) = (
-                Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(res.clone()).square()),
-                GateCount::fq12_cyclotomic_square_montgomery(),
-            ); //Fq12::square_evaluate_montgomery(res.clone());
+            let (wires1, gc) = Fq12::square_evaluate_montgomery(res.clone());
             res = wires1;
             gate_count += gc;
         }
@@ -46,13 +43,7 @@ pub fn cyclotomic_exp_evaluate_montgomery_fast(f: Wires) -> (Wires, GateCount) {
             found_nonzero = true;
 
             if value > 0 {
-                let (wires2, gc) = (
-                    Fq12::wires_set_montgomery(
-                        Fq12::from_montgomery_wires(res.clone())
-                            * Fq12::from_montgomery_wires(f.clone()),
-                    ),
-                    GateCount::fq12_mul_montgomery(),
-                ); // Fq12::mul_evaluate(res.clone(), f.clone());
+                let (wires2, gc) = Fq12::mul_evaluate_montgomery(res.clone(), f.clone());
                 res = wires2;
                 gate_count += gc;
             }
@@ -100,10 +91,7 @@ pub fn cyclotomic_exp_fast_inverse_evaluate_montgomery_fast(f: Wires) -> (Wires,
         .rev()
     {
         if found_nonzero {
-            let (wires1, gc) = (
-                Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(res.clone()).square()),
-                GateCount::fq12_cyclotomic_square_montgomery(),
-            ); //Fq12::square_evaluate_montgomery(res.clone());
+            let (wires1, gc) = Fq12::square_evaluate_montgomery(res.clone());
             res = wires1;
             gate_count += gc;
         }
@@ -112,23 +100,11 @@ pub fn cyclotomic_exp_fast_inverse_evaluate_montgomery_fast(f: Wires) -> (Wires,
             found_nonzero = true;
 
             if value > 0 {
-                let (wires2, gc) = (
-                    Fq12::wires_set_montgomery(
-                        Fq12::from_montgomery_wires(res.clone())
-                            * Fq12::from_montgomery_wires(f.clone()),
-                    ),
-                    GateCount::fq12_mul_montgomery(),
-                ); // Fq12::mul_evaluate_montgomery(res.clone(), f.clone());
+                let (wires2, gc) = Fq12::mul_evaluate_montgomery(res.clone(), f.clone());
                 res = wires2;
                 gate_count += gc;
             } else {
-                let (wires2, gc) = (
-                    Fq12::wires_set_montgomery(
-                        Fq12::from_montgomery_wires(res.clone())
-                            * Fq12::from_montgomery_wires(f_inverse.clone()),
-                    ),
-                    GateCount::fq12_mul_montgomery(),
-                ); // Fq12::mul_evaluate_montgomery(res.clone(), f_inverse.clone());
+                let (wires2, gc) = Fq12::mul_evaluate_montgomery(res.clone(), f_inverse.clone());
                 res = wires2;
                 gate_count += gc;
             }
@@ -187,47 +163,23 @@ pub fn final_exponentiation_evaluate_montgomery_fast(f: Wires) -> (Wires, GateCo
     gate_count += gc;
     let (f_conjugate, gc) = Fq12::conjugate_evaluate(f.clone());
     gate_count += gc;
-    let (u, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(f_inv) * Fq12::from_montgomery_wires(f_conjugate),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(f_inv, f_conjugate);
+    let (u, gc) = Fq12::mul_evaluate_montgomery(f_inv, f_conjugate);
     gate_count += gc;
     let (u_frobenius, gc) = Fq12::frobenius_evaluate_montgomery(u.clone(), 2);
     gate_count += gc;
-    let (r, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(u_frobenius) * Fq12::from_montgomery_wires(u.clone()),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(u_frobenius, u.clone());
+    let (r, gc) = Fq12::mul_evaluate_montgomery(u_frobenius, u.clone());
     gate_count += gc;
     let (y0, gc) = exp_by_neg_x_evaluate_montgomery(r.clone());
     gate_count += gc;
-    let (y1, gc) = (
-        Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(y0).square()),
-        GateCount::fq12_square_montgomery(),
-    ); // Fq12::square_evaluate_montgomery(y0);
+    let (y1, gc) = Fq12::square_evaluate_montgomery(y0);
     gate_count += gc;
-    let (y2, gc) = (
-        Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(y1.clone()).square()),
-        GateCount::fq12_square_montgomery(),
-    ); // Fq12::square_evaluate_montgomery(y1.clone());
+    let (y2, gc) = Fq12::square_evaluate_montgomery(y1.clone());
     gate_count += gc;
-    let (y3, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(y1.clone()) * Fq12::from_montgomery_wires(y2),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(y1.clone(), y2);
+    let (y3, gc) = Fq12::mul_evaluate_montgomery(y1.clone(), y2);
     gate_count += gc;
     let (y4, gc) = exp_by_neg_x_evaluate_montgomery(y3.clone());
     gate_count += gc;
-    let (y5, gc) = (
-        Fq12::wires_set_montgomery(Fq12::from_montgomery_wires(y4.clone()).square()),
-        GateCount::fq12_square_montgomery(),
-    ); // Fq12::square_evaluate_montgomery(y4.clone());
+    let (y5, gc) = Fq12::square_evaluate_montgomery(y4.clone());
     gate_count += gc;
     let (y6, gc) = exp_by_neg_x_evaluate_montgomery(y5);
     gate_count += gc;
@@ -235,76 +187,31 @@ pub fn final_exponentiation_evaluate_montgomery_fast(f: Wires) -> (Wires, GateCo
     gate_count += gc;
     let (y8, gc) = Fq12::conjugate_evaluate(y6);
     gate_count += gc;
-    let (y9, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(y8) * Fq12::from_montgomery_wires(y4.clone()),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(y8, y4.clone());
+    let (y9, gc) = Fq12::mul_evaluate_montgomery(y8, y4.clone());
     gate_count += gc;
-    let (y10, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(y9) * Fq12::from_montgomery_wires(y7),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(y9, y7);
+    let (y10, gc) = Fq12::mul_evaluate_montgomery(y9, y7);
     gate_count += gc;
-    let (y11, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(y10.clone()) * Fq12::from_montgomery_wires(y1),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(y10.clone(), y1);
+    let (y11, gc) = Fq12::mul_evaluate_montgomery(y10.clone(), y1);
     gate_count += gc;
-    let (y12, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(y10.clone()) * Fq12::from_montgomery_wires(y4),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(y10.clone(), y4);
+    let (y12, gc) = Fq12::mul_evaluate_montgomery(y10.clone(), y4);
     gate_count += gc;
-    let (y13, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(y12) * Fq12::from_montgomery_wires(r.clone()),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(y12, r.clone());
+    let (y13, gc) = Fq12::mul_evaluate_montgomery(y12, r.clone());
     gate_count += gc;
     let (y14, gc) = Fq12::frobenius_evaluate_montgomery(y11.clone(), 1);
     gate_count += gc;
-    let (y15, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(y14) * Fq12::from_montgomery_wires(y13),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(y14, y13);
+    let (y15, gc) = Fq12::mul_evaluate_montgomery(y14, y13);
     gate_count += gc;
     let (y16, gc) = Fq12::frobenius_evaluate_montgomery(y10, 2);
     gate_count += gc;
-    let (y17, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(y16) * Fq12::from_montgomery_wires(y15),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(y16, y15);
+    let (y17, gc) = Fq12::mul_evaluate_montgomery(y16, y15);
     gate_count += gc;
     let (r2, gc) = Fq12::conjugate_evaluate(r);
     gate_count += gc;
-    let (y18, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(r2) * Fq12::from_montgomery_wires(y11),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(r2, y11);
+    let (y18, gc) = Fq12::mul_evaluate_montgomery(r2, y11);
     gate_count += gc;
     let (y19, gc) = Fq12::frobenius_evaluate_montgomery(y18, 3);
     gate_count += gc;
-    let (y20, gc) = (
-        Fq12::wires_set_montgomery(
-            Fq12::from_montgomery_wires(y19) * Fq12::from_montgomery_wires(y17),
-        ),
-        GateCount::fq12_mul_montgomery(),
-    ); // Fq12::mul_evaluate_montgomery(y19, y17);
+    let (y20, gc) = Fq12::mul_evaluate_montgomery(y19, y17);
     gate_count += gc;
     (y20, gate_count)
 }
