@@ -7,6 +7,11 @@ use rand::Rng;
 pub use crate::GateType;
 use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
 
+mod garbling;
+pub mod serialization;
+
+use garbling::{degarble, garble};
+
 type DefaultHasher = blake3::Hasher;
 
 pub type GateId = usize;
@@ -464,9 +469,6 @@ impl Gate {
         }
     }
 }
-
-mod garbling;
-use garbling::{degarble, garble};
 
 #[cfg(test)]
 mod tests {
