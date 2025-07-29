@@ -1,9 +1,9 @@
-use memmap2::Mmap;
 use once_cell::sync::Lazy;
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::Mutex;
+use std::thread;
 
 use crate::bag::Gate;
 
@@ -173,55 +173,71 @@ fn read_id_from_slice(slice: &[u8]) -> u64 {
 const GATE_SIZE: usize = 16;
 const CHUNK_SIZE: usize = 8 * 1024 * 1024; // 8MB, кратно GATE_SIZE
 
-// --- Обобщённая высокопроизводительная версия ---
-pub fn read_gates_optimized_with<P: AsRef<Path>>(
-    path: P,
+/// Designed to read 11b gates
+pub fn read_gates_optimized_with(
+    path: impl AsRef<Path>,
     mut callback: impl FnMut(OriginalGate),
-) -> Result<usize, io::Error> {
-    let file = File::open(path)?;
-    let mut reader = BufReader::with_capacity(CHUNK_SIZE, file);
+) -> io::Result<usize> {
+    let (sender, receiver) = crossbeam::channel::bounded::<Vec<OriginalGate>>(2); // максимум 2 чанка в буфере (~128MB RAM)
 
-    // 1. Читаем MAGIC
-    let mut magic = [0u8; 4];
-    reader.read_exact(&mut magic)?;
-    if &magic != FILE_MAGIC {
-        panic!("Invalid magic header");
-    }
+    let path = path.as_ref().to_owned();
 
-    // 2. Читаем COUNT
-    let mut count_buf = [0u8; 8];
-    reader.read_exact(&mut count_buf)?;
-    let total = u64::from_le_bytes(count_buf) as usize;
+    let reader_thread = thread::spawn(move || -> io::Result<()> {
+        let file = File::open(&path)?;
+        let mut reader = BufReader::with_capacity(CHUNK_SIZE, file);
 
-    // 3. Чтение чанками
-    let mut processed = 0;
-    let mut buffer = vec![0u8; CHUNK_SIZE];
-
-    while processed < total {
-        let remaining = total - processed;
-        let to_read = remaining * GATE_SIZE;
-        let read_size = std::cmp::min(to_read, buffer.len());
-
-        let chunk = &mut buffer[..read_size];
-        reader.read_exact(chunk)?;
-
-        let gates_in_chunk = chunk.len() / GATE_SIZE;
-        for i in 0..gates_in_chunk {
-            let offset = i * GATE_SIZE;
-            let data = &chunk[offset..offset + GATE_SIZE];
-
-            let op = GateType::try_from(data[0]).unwrap();
-            let a = read_id_from_slice(&data[1..6]);
-            let b = read_id_from_slice(&data[6..11]);
-            let c = read_id_from_slice(&data[11..16]);
-
-            callback(OriginalGate { op, a, b, c });
+        // Проверка заголовка
+        let mut magic = [0u8; 4];
+        reader.read_exact(&mut magic)?;
+        if &magic != FILE_MAGIC {
+            panic!("Invalid magic header");
         }
 
-        processed += gates_in_chunk;
+        let mut count_buf = [0u8; 8];
+        reader.read_exact(&mut count_buf)?;
+        let total = u64::from_le_bytes(count_buf) as usize;
+
+        let mut processed = 0;
+        let mut buffer = vec![0u8; CHUNK_SIZE];
+
+        while processed < total {
+            let remaining = total - processed;
+            let to_read = std::cmp::min(remaining * GATE_SIZE, buffer.len());
+            let chunk = &mut buffer[..to_read];
+            reader.read_exact(chunk)?;
+
+            let gates = chunk.len() / GATE_SIZE;
+            let mut parsed = Vec::with_capacity(gates);
+
+            for i in 0..gates {
+                let offset = i * GATE_SIZE;
+                let data = &chunk[offset..offset + GATE_SIZE];
+
+                let op = GateType::try_from(data[0]).unwrap();
+                let a = read_id_from_slice(&data[1..6]);
+                let b = read_id_from_slice(&data[6..11]);
+                let c = read_id_from_slice(&data[11..16]);
+
+                parsed.push(OriginalGate { op, a, b, c });
+            }
+
+            sender.send(parsed).unwrap();
+            processed += gates;
+        }
+
+        Ok(())
+    });
+
+    let mut total = 0;
+    for chunk in receiver.iter() {
+        for gate in chunk {
+            callback(gate);
+            total += 1;
+        }
     }
 
-    Ok(processed)
+    reader_thread.join().unwrap()?; // propagate reader error
+    Ok(total)
 }
 
 //#[cfg(test)]
