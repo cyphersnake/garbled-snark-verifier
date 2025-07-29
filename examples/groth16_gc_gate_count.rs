@@ -104,53 +104,57 @@ fn main() {
     println!("// Copy these wire decompositions to your example:");
     println!();
     
-    // Print public input wires
-    println!("const PUBLIC_WIRES: &[u64] = &[");
+    // Print public input wires with their values
+    println!("const PUBLIC_WIRE_VALUES: &[(u64, bool)] = &[");
     for (i, wire) in public.iter().enumerate() {
-        if i % 10 == 0 && i > 0 { println!(); }
+        if i % 5 == 0 && i > 0 { println!(); }
+        let wire_ref = wire.borrow();
         if i == public.len() - 1 {
-            println!("    {},", wire.borrow().id);
+            println!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
         } else {
-            print!("    {},", wire.borrow().id);
+            print!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
         }
     }
     println!("];");
     println!();
     
-    // Print proof_a wires  
-    println!("const PROOF_A_WIRES: &[u64] = &[");
+    // Print proof_a wires with their values
+    println!("const PROOF_A_WIRE_VALUES: &[(u64, bool)] = &[");
     for (i, wire) in proof_a.iter().enumerate() {
-        if i % 10 == 0 && i > 0 { println!(); }
+        if i % 5 == 0 && i > 0 { println!(); }
+        let wire_ref = wire.borrow();
         if i == proof_a.len() - 1 {
-            println!("    {},", wire.borrow().id);
+            println!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
         } else {
-            print!("    {},", wire.borrow().id);
+            print!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
         }
     }
     println!("];");
     println!();
     
-    // Print proof_b wires
-    println!("const PROOF_B_WIRES: &[u64] = &[");
+    // Print proof_b wires with their values
+    println!("const PROOF_B_WIRE_VALUES: &[(u64, bool)] = &[");
     for (i, wire) in proof_b.iter().enumerate() {
-        if i % 10 == 0 && i > 0 { println!(); }
+        if i % 5 == 0 && i > 0 { println!(); }
+        let wire_ref = wire.borrow();
         if i == proof_b.len() - 1 {
-            println!("    {},", wire.borrow().id);
+            println!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
         } else {
-            print!("    {},", wire.borrow().id);
+            print!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
         }
     }
     println!("];");
     println!();
     
-    // Print proof_c wires
-    println!("const PROOF_C_WIRES: &[u64] = &[");
+    // Print proof_c wires with their values
+    println!("const PROOF_C_WIRE_VALUES: &[(u64, bool)] = &[");
     for (i, wire) in proof_c.iter().enumerate() {
-        if i % 10 == 0 && i > 0 { println!(); }
+        if i % 5 == 0 && i > 0 { println!(); }
+        let wire_ref = wire.borrow();
         if i == proof_c.len() - 1 {
-            println!("    {},", wire.borrow().id);
+            println!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
         } else {
-            print!("    {},", wire.borrow().id);
+            print!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
         }
     }
     println!("];");
