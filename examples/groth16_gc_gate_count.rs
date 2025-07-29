@@ -100,62 +100,96 @@ fn main() {
     let proof_b = G2Affine::wires_set_montgomery(proof.b);
     let proof_c = G1Affine::wires_set_montgomery(proof.c);
 
-    // Print wire decompositions in Rust syntax for copy-paste
-    println!("// Copy these wire decompositions to your example:");
-    println!();
-    
-    // Print public input wires with their values
-    println!("const PUBLIC_WIRE_VALUES: &[(u64, bool)] = &[");
+    // Call the verifier to get output wires
+    let (output_wire, _gate_count) = groth16_verifier_evaluate_montgomery(
+        public.clone(),
+        proof_a.clone(),
+        proof_b.clone(),
+        proof_c.clone(),
+        vk,
+        false,
+    );
+
+    // Save wire decompositions to a file for inclusion in other examples
+    use std::fs::File;
+    use std::io::Write;
+    let mut file = File::create("wire_values.rs").expect("Could not create wire_values.rs");
+
+    writeln!(
+        file,
+        "// Wire values from groth16 proof - generated automatically"
+    )
+    .unwrap();
+    writeln!(file, "// DO NOT EDIT MANUALLY").unwrap();
+    writeln!(file).unwrap();
+
+    // Write public input wires with their values
+    writeln!(file, "pub const PUBLIC_WIRE_VALUES: &[(u64, bool)] = &[").unwrap();
     for (i, wire) in public.iter().enumerate() {
-        if i % 5 == 0 && i > 0 { println!(); }
         let wire_ref = wire.borrow();
+        if i % 5 == 0 && i > 0 {
+            writeln!(file).unwrap();
+        }
         if i == public.len() - 1 {
-            println!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
+            writeln!(file, "    ({}, {}),", wire_ref.id, wire_ref.get_value()).unwrap();
         } else {
-            print!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
+            write!(file, "    ({}, {}),", wire_ref.id, wire_ref.get_value()).unwrap();
         }
     }
-    println!("];");
-    println!();
-    
-    // Print proof_a wires with their values
-    println!("const PROOF_A_WIRE_VALUES: &[(u64, bool)] = &[");
+    writeln!(file, "];").unwrap();
+    writeln!(file).unwrap();
+
+    // Write proof_a wires with their values
+    writeln!(file, "pub const PROOF_A_WIRE_VALUES: &[(u64, bool)] = &[").unwrap();
     for (i, wire) in proof_a.iter().enumerate() {
-        if i % 5 == 0 && i > 0 { println!(); }
         let wire_ref = wire.borrow();
+        if i % 5 == 0 && i > 0 {
+            writeln!(file).unwrap();
+        }
         if i == proof_a.len() - 1 {
-            println!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
+            writeln!(file, "    ({}, {}),", wire_ref.id, wire_ref.get_value()).unwrap();
         } else {
-            print!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
+            write!(file, "    ({}, {}),", wire_ref.id, wire_ref.get_value()).unwrap();
         }
     }
-    println!("];");
-    println!();
-    
-    // Print proof_b wires with their values
-    println!("const PROOF_B_WIRE_VALUES: &[(u64, bool)] = &[");
+    writeln!(file, "];").unwrap();
+    writeln!(file).unwrap();
+
+    // Write proof_b wires with their values
+    writeln!(file, "pub const PROOF_B_WIRE_VALUES: &[(u64, bool)] = &[").unwrap();
     for (i, wire) in proof_b.iter().enumerate() {
-        if i % 5 == 0 && i > 0 { println!(); }
         let wire_ref = wire.borrow();
+        if i % 5 == 0 && i > 0 {
+            writeln!(file).unwrap();
+        }
         if i == proof_b.len() - 1 {
-            println!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
+            writeln!(file, "    ({}, {}),", wire_ref.id, wire_ref.get_value()).unwrap();
         } else {
-            print!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
+            write!(file, "    ({}, {}),", wire_ref.id, wire_ref.get_value()).unwrap();
         }
     }
-    println!("];");
-    println!();
-    
-    // Print proof_c wires with their values
-    println!("const PROOF_C_WIRE_VALUES: &[(u64, bool)] = &[");
+    writeln!(file, "];").unwrap();
+    writeln!(file).unwrap();
+
+    // Write proof_c wires with their values
+    writeln!(file, "pub const PROOF_C_WIRE_VALUES: &[(u64, bool)] = &[").unwrap();
     for (i, wire) in proof_c.iter().enumerate() {
-        if i % 5 == 0 && i > 0 { println!(); }
         let wire_ref = wire.borrow();
+        if i % 5 == 0 && i > 0 {
+            writeln!(file).unwrap();
+        }
         if i == proof_c.len() - 1 {
-            println!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
+            writeln!(file, "    ({}, {}),", wire_ref.id, wire_ref.get_value()).unwrap();
         } else {
-            print!("    ({}, {}),", wire_ref.id, wire_ref.get_value());
+            write!(file, "    ({}, {}),", wire_ref.id, wire_ref.get_value()).unwrap();
         }
     }
-    println!("];");
+    writeln!(file, "];").unwrap();
+    writeln!(file).unwrap();
+
+    // Write output wire with its value
+    writeln!(file, "pub const OUTPUT_WIRE_VALUE: (u64, bool) = ({}, {});", 
+        output_wire.borrow().id, output_wire.borrow().get_value()).unwrap();
+
+    println!("Wire values saved to wire_values.rs");
 }
