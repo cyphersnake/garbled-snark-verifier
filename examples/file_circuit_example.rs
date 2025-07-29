@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a Circuit using the FileGateProvider
     // For now, we'll use placeholder values - in reality these would be detected
     let file_circuit = Circuit {
-        num_wire: 111_000_000_000,
+        num_wire: 11659311111,
         input_wires: PUBLIC_WIRE_VALUES
             .iter()
             .chain(PROOF_A_WIRE_VALUES.iter())
@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .chain(PROOF_C_WIRE_VALUES.iter())
             .map(|(wire_id, _val)| WireId(*wire_id as usize))
             .collect::<Vec<WireId>>(),
-        output_wires: vec![],
+        output_wires: vec![WireId(OUTPUT_WIRE_VALUE.0 as usize)],
         gates: file_gate_provider,
         gate_count: Default::default(),
     };
@@ -84,9 +84,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nDemonstrating lazy gate loading (first 5 gates):");
 
     // TODO: Once input/output detection is implemented:
-    let result = file_circuit.simple_evaluate(input_handler)?;
-    //let outputs: Vec<_> = result.collect();
-    // println!("Circuit evaluation result: {:?}", outputs);
+    let result = file_circuit
+        .simple_evaluate(input_handler)?
+        .collect::<Vec<_>>()[0]
+        .1;
+
+    assert!(result);
 
     println!("\nFile-based circuit loading successful!");
     println!("Next steps: Implement input/output wire detection for your specific circuit");

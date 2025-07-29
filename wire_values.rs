@@ -471,3 +471,5 @@ pub const PROOF_C_WIRE_VALUES: &[(u64, bool)] = &[
     (2278, true),    (2279, false),    (2280, false),    (2281, true),    (2282, true),
     (2283, false),    (2284, false),    (2285, false),
 ];
+
+pub const OUTPUT_WIRE_VALUE: (u64, bool) = (11659310350, true);
