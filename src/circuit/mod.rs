@@ -78,8 +78,10 @@
 pub mod commitment;
 pub mod errors;
 pub mod evaluation;
+pub mod file_gate_provider;
 pub mod finalized;
 pub mod garbling;
+pub mod gate_provider;
 pub mod structure;
 #[cfg(test)]
 pub mod test;
@@ -89,4 +91,5 @@ pub use errors::CircuitError;
 pub use evaluation::{Error, EvaluatedCircuit};
 pub use finalized::FinalizedCircuit;
 pub use garbling::GarbledCircuit;
+pub use gate_provider::{GateProvider, GateRef};
 pub use structure::Circuit;

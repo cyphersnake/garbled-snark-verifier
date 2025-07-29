@@ -1,8 +1,7 @@
 use std::{
-    fs::{File, OpenOptions},
-    io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
+    fs::File,
+    io::{self, BufReader, Read},
     path::Path,
-    sync::{LazyLock, Mutex},
     thread,
 };
 
@@ -10,24 +9,6 @@ use super::{Gate, GateType};
 
 /// Magic header written to serialized gate files.
 pub const FILE_MAGIC: &[u8; 4] = b"GTV1";
-
-fn read_id<R: Read>(mut reader: R) -> io::Result<u64> {
-    let mut buf = [0u8; 8];
-    reader.read_exact(&mut buf[..5])?;
-    Ok(u64::from_le_bytes(buf))
-}
-
-// --- Исходная функция: читает все гейты и просто считает ---
-pub fn read_gates(path: impl AsRef<Path>) -> io::Result<usize> {
-    let mut count = 0;
-    read_gates_optimized_with(path, |_| {
-        if count % 1_000_000 == 0 {
-            println!("{count}");
-        }
-        count += 1
-    })?;
-    Ok(count)
-}
 
 fn read_id_from_slice(slice: &[u8]) -> u64 {
     let mut buf = [0u8; 8];
@@ -37,12 +18,15 @@ fn read_id_from_slice(slice: &[u8]) -> u64 {
 
 const GATE_SIZE: usize = 16;
 const CHUNK_SIZE: usize = 8 * 1024 * 1024; // 8MB, кратно GATE_SIZE
+                                           // use
+use crossbeam::channel::Receiver;
+use thread::JoinHandle;
 
-/// Designed to read 11b gates
-pub fn read_gates_optimized_with(
+/// Returns a channel receiver for streaming gates from file
+/// Designed for lazy loading of 11b+ gates
+pub fn read_gates_channel(
     path: impl AsRef<Path>,
-    mut callback: impl FnMut(Gate),
-) -> io::Result<usize> {
+) -> io::Result<(Receiver<Vec<Gate>>, JoinHandle<io::Result<()>>)> {
     let (sender, receiver) = crossbeam::channel::bounded::<Vec<Gate>>(2); // максимум 2 чанка в буфере (~128MB RAM)
 
     let path = path.as_ref().to_owned();
@@ -105,12 +89,25 @@ pub fn read_gates_optimized_with(
                 });
             }
 
-            sender.send(parsed).unwrap();
+            if sender.send(parsed).is_err() {
+                // Receiver dropped, stop reading
+                break;
+            }
             processed += gates;
         }
 
         Ok(())
     });
+
+    Ok((receiver, reader_thread))
+}
+
+/// Designed to read 11b gates
+pub fn read_gates_optimized_with(
+    path: impl AsRef<Path>,
+    mut callback: impl FnMut(Gate),
+) -> io::Result<usize> {
+    let (receiver, reader_thread) = read_gates_channel(path)?;
 
     let mut total = 0;
     for chunk in receiver.iter() {

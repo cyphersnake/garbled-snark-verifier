@@ -1,4 +1,4 @@
-mod circuit;
+pub mod circuit;
 mod core;
 mod gadgets;
 mod math;
@@ -11,7 +11,7 @@ pub use core::{
     wire::{EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId},
 };
 
-pub use circuit::{Circuit, CircuitError, EvaluatedCircuit, FinalizedCircuit, GarbledCircuit};
+pub use circuit::{Circuit, CircuitError, EvaluatedCircuit, FinalizedCircuit, GarbledCircuit, GateProvider, GateRef};
 pub use math::*;
 
 #[cfg(test)]

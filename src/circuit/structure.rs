@@ -1,17 +1,21 @@
 use bitvec::prelude::*;
 
 use crate::{Gate, WireId, core::gate_type::GateCount};
+use super::GateProvider;
 
 #[derive(Clone, Debug)]
-pub struct Circuit {
+pub struct Circuit<G = Vec<Gate>>
+where
+    G: GateProvider,
+{
     pub num_wire: usize,
     pub input_wires: Vec<WireId>,
     pub output_wires: Vec<WireId>,
-    pub gates: Vec<Gate>,
+    pub gates: G,
     pub gate_count: GateCount,
 }
 
-impl Default for Circuit {
+impl Default for Circuit<Vec<Gate>> {
     fn default() -> Self {
         Self {
             num_wire: 2,
@@ -23,7 +27,10 @@ impl Default for Circuit {
     }
 }
 
-impl Circuit {
+impl<G> Circuit<G>
+where
+    G: GateProvider,
+{
     pub fn get_false_wire_constant(&self) -> WireId {
         WireId(0)
     }
@@ -66,7 +73,7 @@ impl Circuit {
 
     pub fn add_gate(&mut self, gate: Gate) {
         self.gate_count.handle(gate.gate_type);
-        self.gates.push(gate);
+        self.gates.add_gate(gate);
     }
 
     pub fn simple_evaluate(
@@ -83,11 +90,11 @@ impl Circuit {
             wire_values.set(wire_id.0, value);
         }
 
-        for gate in &self.gates {
-            let a = wire_values[gate.wire_a.0];
-            let b = wire_values[gate.wire_b.0];
-            let result = gate.gate_type.f()(a, b);
-            wire_values.set(gate.wire_c.0, result);
+        for gate in self.gates.gates() {
+            let a = wire_values[gate.wire_a().0];
+            let b = wire_values[gate.wire_b().0];
+            let result = gate.gate_type().f()(a, b);
+            wire_values.set(gate.wire_c().0, result);
         }
 
         Ok(self
