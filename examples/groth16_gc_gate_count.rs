@@ -99,36 +99,59 @@ fn main() {
     let proof_a = G1Affine::wires_set_montgomery(proof.a);
     let proof_b = G2Affine::wires_set_montgomery(proof.b);
     let proof_c = G1Affine::wires_set_montgomery(proof.c);
-    let (result, gate_count) =
-        groth16_verifier_evaluate_montgomery(public, proof_a, proof_b, proof_c, vk, false);
 
-    if json_output {
-        let nonfree_gates = gate_count.nonfree_gate_count();
-        let xor_variants = gate_count.xor_count() + gate_count.xnor_count();
-        let not_gates = gate_count.not_count();
-        let free_gates = xor_variants + not_gates;
-        let total_gates = gate_count.total_gate_count();
-
-        let output = json!({
-            "circuit_size": {
-                "k": K,
-                "constraints": 1 << K
-            },
-            "gate_count": {
-                "nonfree": nonfree_gates,
-                "nonfree_formatted": format_number(nonfree_gates),
-                "free": free_gates,
-                "free_formatted": format_number(free_gates),
-                "total": total_gates,
-                "total_formatted": format_number(total_gates),
-                "breakdown": gate_count.0
-            },
-            "verification_result": result.borrow().get_value()
-        });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
-    } else {
-        println!("\n=== GATE COUNT ===");
-        gate_count.print();
-        println!("Verification result: {}", result.borrow().get_value());
+    // Print wire decompositions in Rust syntax for copy-paste
+    println!("// Copy these wire decompositions to your example:");
+    println!();
+    
+    // Print public input wires
+    println!("const PUBLIC_WIRES: &[u64] = &[");
+    for (i, wire) in public.iter().enumerate() {
+        if i % 10 == 0 && i > 0 { println!(); }
+        if i == public.len() - 1 {
+            println!("    {},", wire.borrow().id);
+        } else {
+            print!("    {},", wire.borrow().id);
+        }
     }
+    println!("];");
+    println!();
+    
+    // Print proof_a wires  
+    println!("const PROOF_A_WIRES: &[u64] = &[");
+    for (i, wire) in proof_a.iter().enumerate() {
+        if i % 10 == 0 && i > 0 { println!(); }
+        if i == proof_a.len() - 1 {
+            println!("    {},", wire.borrow().id);
+        } else {
+            print!("    {},", wire.borrow().id);
+        }
+    }
+    println!("];");
+    println!();
+    
+    // Print proof_b wires
+    println!("const PROOF_B_WIRES: &[u64] = &[");
+    for (i, wire) in proof_b.iter().enumerate() {
+        if i % 10 == 0 && i > 0 { println!(); }
+        if i == proof_b.len() - 1 {
+            println!("    {},", wire.borrow().id);
+        } else {
+            print!("    {},", wire.borrow().id);
+        }
+    }
+    println!("];");
+    println!();
+    
+    // Print proof_c wires
+    println!("const PROOF_C_WIRES: &[u64] = &[");
+    for (i, wire) in proof_c.iter().enumerate() {
+        if i % 10 == 0 && i > 0 { println!(); }
+        if i == proof_c.len() - 1 {
+            println!("    {},", wire.borrow().id);
+        } else {
+            print!("    {},", wire.borrow().id);
+        }
+    }
+    println!("];");
 }
