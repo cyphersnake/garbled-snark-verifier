@@ -32,6 +32,9 @@ impl TryFrom<u8> for GateType {
             5 => Ok(GateType::Cimp),
             6 => Ok(GateType::Nor),
             7 => Ok(GateType::Or),
+            8 => Ok(GateType::Xor),
+            9 => Ok(GateType::Xnor),
+            10 => Ok(GateType::Not),
             _ => Err(()),
         }
     }
@@ -276,4 +279,3 @@ impl GateCount {
         self.0[GateType::Not as usize]
     }
 }
-

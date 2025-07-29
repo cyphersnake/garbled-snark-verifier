@@ -1,10 +1,13 @@
+use memmap2::Mmap;
 use once_cell::sync::Lazy;
-use std::fs::OpenOptions;
-use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{self, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::Mutex;
 
 use crate::bag::Gate;
+
+use super::gate::GateType;
 
 /// Magic header written to serialized gate files.
 pub const FILE_MAGIC: &[u8; 4] = b"GTV1";
@@ -142,27 +145,83 @@ fn serialize_gate<W: Write>(writer: &mut W, gate: &Gate) -> io::Result<()> {
     write_id(writer, gate.wire_c.borrow().id)
 }
 
-/// Read all gates from a serialized file.
-pub fn read_gates<P: AsRef<Path>>(path: P) -> io::Result<usize> {
-    let mut file = std::fs::File::open(path)?;
+// --- Исходная функция: читает все гейты и просто считает ---
+pub fn read_gates(path: impl AsRef<Path>) -> io::Result<usize> {
+    let mut count = 0;
+    read_gates_optimized_with(path, |_| {
+        if count % 1_000_000 == 0 {
+            println!("{count}");
+        }
+        count += 1
+    })?;
+    Ok(count)
+}
+
+struct OriginalGate {
+    a: u64,
+    b: u64,
+    c: u64,
+    op: GateType,
+}
+
+fn read_id_from_slice(slice: &[u8]) -> u64 {
+    let mut buf = [0u8; 8];
+    buf[..5].copy_from_slice(&slice[..5]);
+    u64::from_le_bytes(buf)
+}
+
+const GATE_SIZE: usize = 16;
+const CHUNK_SIZE: usize = 8 * 1024 * 1024; // 8MB, кратно GATE_SIZE
+
+// --- Обобщённая высокопроизводительная версия ---
+pub fn read_gates_optimized_with<P: AsRef<Path>>(
+    path: P,
+    mut callback: impl FnMut(OriginalGate),
+) -> Result<usize, io::Error> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::with_capacity(CHUNK_SIZE, file);
+
+    // 1. Читаем MAGIC
     let mut magic = [0u8; 4];
-    file.read_exact(&mut magic)?;
+    reader.read_exact(&mut magic)?;
     if &magic != FILE_MAGIC {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "bad magic"));
+        panic!("Invalid magic header");
     }
-    let mut count_bytes = [0u8; 8];
-    file.read_exact(&mut count_bytes)?;
-    let count = u64::from_le_bytes(count_bytes);
-    let mut actual = 0;
-    for _ in 0..count {
-        let mut op = [0u8; 1];
-        file.read_exact(&mut op)?;
-        let a = read_id(&mut file)?;
-        let b = read_id(&mut file)?;
-        let c = read_id(&mut file)?;
-        actual += 1;
+
+    // 2. Читаем COUNT
+    let mut count_buf = [0u8; 8];
+    reader.read_exact(&mut count_buf)?;
+    let total = u64::from_le_bytes(count_buf) as usize;
+
+    // 3. Чтение чанками
+    let mut processed = 0;
+    let mut buffer = vec![0u8; CHUNK_SIZE];
+
+    while processed < total {
+        let remaining = total - processed;
+        let to_read = remaining * GATE_SIZE;
+        let read_size = std::cmp::min(to_read, buffer.len());
+
+        let chunk = &mut buffer[..read_size];
+        reader.read_exact(chunk)?;
+
+        let gates_in_chunk = chunk.len() / GATE_SIZE;
+        for i in 0..gates_in_chunk {
+            let offset = i * GATE_SIZE;
+            let data = &chunk[offset..offset + GATE_SIZE];
+
+            let op = GateType::try_from(data[0]).unwrap();
+            let a = read_id_from_slice(&data[1..6]);
+            let b = read_id_from_slice(&data[6..11]);
+            let c = read_id_from_slice(&data[11..16]);
+
+            callback(OriginalGate { op, a, b, c });
+        }
+
+        processed += gates_in_chunk;
     }
-    Ok(actual)
+
+    Ok(processed)
 }
 
 //#[cfg(test)]
