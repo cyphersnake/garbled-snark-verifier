@@ -1,0 +1,28 @@
+# Configuration file for file_circuit_example.rs
+# This file configures the parameters for running the garbled circuit example
+
+# Path to the circuit file to load
+circuit_file_path = "../verifier_gates.bin"
+
+# Number of parallel garblings to run
+# If not specified or commented out, will auto-detect based on available CPU cores
+num_of_garbling = 181
+
+# Base directory for saving garbled data (required)
+# A timestamp subdirectory will be created automatically: {save_path}/{timestamp}/
+save_path = "./garbled_data"
+
+# Garbling IDs for which to save ciphertext tables (empty array means no ciphertext saving)
+# All garblings always save input/output labels and ciphertext hash
+save_ciphertext_ids = [0, 1, 2, 3, 4, 5, 6, 7]
+
+# Smart Memory Management Settings
+
+# Memory requirement per worker thread in GB
+# Default is 357GB per worker as specified in requirements
+worker_memory_gb = 357
+
+# Interval for checking memory availability in milliseconds
+# Lower values = more responsive but higher CPU overhead
+# Default is 2000ms (2 seconds)
+memory_check_interval_ms = 2000
