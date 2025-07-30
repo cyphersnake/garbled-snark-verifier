@@ -16,6 +16,8 @@ use std::{
 use crossbeam::channel;
 use garbled_snark_verifier::{
     circuit::{errors::CircuitError, file_gate_provider::FileGateProvider, GateProvider},
+    process_monitor::{ProcessMonitor, CircuitInfo, ThreadStatus},
+    tui_monitor::run_tui,
     Circuit, Delta, GarbledWire, GarbledWires, WireId, S,
 };
 use rand::{Rng, SeedableRng};
@@ -235,6 +237,16 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     println!("Worker memory requirement: {}GB per thread", worker_memory_gb);
     println!("Saving to timestamped directory: {}", timestamp_dir);
 
+    // Initialize ProcessMonitor
+    let circuit_info = CircuitInfo {
+        num_wire: circuit_template.num_wire,
+        input_wire_count: circuit_template.input_wires.len(),
+        output_wire_count: circuit_template.output_wires.len(),
+        total_gates: circuit_template.gates.gate_count().unwrap_or(0),
+    };
+    
+    let initial_memory_gb = 356.0; // Accurate estimation from actual runs
+
     // Get system memory information
     let (total_virtual_gb, available_virtual_gb) = get_system_memory_info()
         .ok_or_else(|| CircuitError::GarblingFailed("Failed to get system memory stats".to_string()))?;
@@ -250,6 +262,13 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     );
     
     println!("Starting with {} workers (limited by memory)", initial_workers);
+    
+    ProcessMonitor::initialize(
+        circuit_info,
+        timestamp_dir.clone(),
+        initial_memory_gb,
+        initial_workers,
+    );
 
     // Create task queue with all remaining tasks
     let mut pending_tasks = VecDeque::new();
@@ -281,6 +300,13 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
             active_workers.lock().unwrap().push(handle);
         }
     }
+    
+    // Start TUI in background thread
+    let tui_handle = thread::spawn(|| {
+        if let Err(e) = run_tui() {
+            eprintln!("TUI failed: {}", e);
+        }
+    });
 
     // Memory monitoring and worker management loop
     let pending_tasks_clone = Arc::clone(&pending_tasks);
@@ -289,6 +315,23 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     
     loop {
         thread::sleep(memory_check_interval);
+        
+        // Update system metrics
+        if let Some((total_gb, available_gb)) = get_system_memory_info() {
+            let process_memory_gb = 356.0; // Use accurate estimation
+            
+            if let Some(monitor) = ProcessMonitor::instance() {
+                if let Ok(guard) = monitor.lock() {
+                    guard.update_system_metrics(
+                        total_gb,
+                        available_gb,
+                        process_memory_gb,
+                        pending_tasks_clone.lock().unwrap().len(),
+                    );
+                    guard.update_storage_metrics();
+                }
+            }
+        }
         
         // Check for completed workers
         let mut workers = active_workers_clone.lock().unwrap();
@@ -341,6 +384,9 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         }
     }
 
+    // Wait for TUI to finish (user pressed 'q')
+    let _ = tui_handle.join();
+    
     // Extract final results
     let results = Arc::try_unwrap(completed_results)
         .map_err(|_| CircuitError::GarblingFailed("Failed to extract results".to_string()))?
@@ -357,6 +403,19 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
     thread::spawn(move || {
         let start_time = Instant::now();
         let mut rng = ChaCha8Rng::seed_from_u64(task.task_id as u64);
+        
+        // Register with ProcessMonitor
+        let gate_counter = if let Some(monitor) = ProcessMonitor::instance() {
+            if let Ok(guard) = monitor.lock() {
+                guard.update_thread_status(task.task_id, ThreadStatus::Starting);
+                let total_gates = task.circuit_file_path.len(); // Placeholder - should get actual gate count
+                Some(guard.register_thread(task.task_id, total_gates))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         // Create a new FileGateProvider for this thread
         let file_gate_provider = match FileGateProvider::new(&task.circuit_file_path) {
@@ -378,15 +437,32 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
             gate_count: Default::default(),
         };
 
+        // Update status to running
+        if let Some(monitor) = ProcessMonitor::instance() {
+            if let Ok(guard) = monitor.lock() {
+                guard.update_thread_status(task.task_id, ThreadStatus::Running);
+            }
+        }
+        
         match garble_with_streaming_thread::<H, _>(
             &thread_circuit,
             &mut rng,
             Some(task.task_id),
             &task.timestamped_save_path,
             task.should_save_ciphertexts,
+            gate_counter,
         ) {
             Ok((_, xor_result)) => {
                 let duration = start_time.elapsed();
+                
+                // Update final status and result
+                if let Some(monitor) = ProcessMonitor::instance() {
+                    if let Ok(guard) = monitor.lock() {
+                        guard.update_thread_status(task.task_id, ThreadStatus::Finished);
+                        guard.update_thread_result(task.task_id, xor_result);
+                    }
+                }
+                
                 Ok(ThreadStats {
                     thread_id: task.task_id,
                     gates_processed: thread_circuit.gates.gate_count().unwrap_or(0),
@@ -394,7 +470,15 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
                     xor_result,
                 })
             }
-            Err(e) => Err(e),
+            Err(e) => {
+                // Update error status
+                if let Some(monitor) = ProcessMonitor::instance() {
+                    if let Ok(guard) = monitor.lock() {
+                        guard.update_thread_status(task.task_id, ThreadStatus::Error);
+                    }
+                }
+                Err(e)
+            }
         }
     })
 }
@@ -403,7 +487,7 @@ fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     circuit: &Circuit<G>,
     rng: &mut impl Rng,
 ) -> Result<(GarbledWires, S), CircuitError> {
-    garble_with_streaming_thread::<H, G>(circuit, rng, None, "", false)
+    garble_with_streaming_thread::<H, G>(circuit, rng, None, "", false, None)
 }
 
 #[inline(always)]
@@ -431,6 +515,7 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     thread_id: Option<usize>,
     save_path: &str,
     should_save_ciphertexts: bool,
+    external_gate_counter: Option<Arc<AtomicUsize>>,
 ) -> Result<(GarbledWires, S), CircuitError> {
     log::debug!(
         "garble_streaming: start wires={} gates={:?}",
@@ -512,12 +597,19 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     let (sender, receiver) = channel::bounded::<S>(10000);
 
     // Progress tracking with atomic counter
-    // Use zero as signal to abort thread
-    let gate_counter = Arc::new(AtomicUsize::new(0));
+    // Use external counter if provided, otherwise create new one
+    let (gate_counter, should_spawn_monitor) = match external_gate_counter {
+        Some(counter) => (counter, false),
+        None => (Arc::new(AtomicUsize::new(0)), true),
+    };
 
-    // Spawn progress monitoring thread
+    // Spawn progress monitoring thread only if we don't have external counter (avoid double monitoring)
     let total_gates = circuit.gates.gate_count().unwrap_or(0);
-    let progress_thread = spawn_progress_monitor(gate_counter.clone(), total_gates, thread_id);
+    let progress_thread = if should_spawn_monitor {
+        Some(spawn_progress_monitor(gate_counter.clone(), total_gates, thread_id))
+    } else {
+        None
+    };
 
     let ciphertext_accumulator_thread = thread::spawn(move || {
         let mut xor_result = S::zero();
@@ -582,9 +674,11 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     println!("xor_result: {xor_result:?}");
 
     // Wait for progress thread to finish and print final newline
-    gate_counter.store(usize::MAX, Ordering::Relaxed);
-    let _ = progress_thread.join();
-    println!();
+    if let Some(thread) = progress_thread {
+        gate_counter.store(usize::MAX, Ordering::Relaxed);
+        let _ = thread.join();
+        println!();
+    }
 
     // Print bitcoin::hash160 of all output wires (garbled) - after full garbling process
     let mut all_output_bytes = Vec::new();

@@ -2,6 +2,8 @@ pub mod circuit;
 mod core;
 mod gadgets;
 mod math;
+pub mod process_monitor;
+pub mod tui_monitor;
 
 pub use core::{
     delta::Delta,

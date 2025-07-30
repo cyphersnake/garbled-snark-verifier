@@ -1,0 +1,324 @@
+use std::{
+    io::{self, Stdout},
+    time::{Duration, Instant},
+};
+
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Style},
+    text::{Line, Span},
+    widgets::{
+        Block, Borders, List, ListItem, Paragraph, 
+        Wrap,
+    },
+    Frame, Terminal,
+};
+
+use crate::process_monitor::{ProcessMonitor, ThreadStatus, MonitorSnapshot};
+
+pub struct TuiApp {
+    should_quit: bool,
+    last_update: Instant,
+    refresh_interval: Duration,
+    monitor: Option<std::sync::Arc<std::sync::Mutex<ProcessMonitor>>>,
+}
+
+impl TuiApp {
+    pub fn new() -> Self {
+        Self {
+            should_quit: false,
+            last_update: Instant::now(),
+            refresh_interval: Duration::from_secs(2), // Faster refresh for real-time monitoring
+            monitor: ProcessMonitor::instance(),
+        }
+    }
+
+    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Setup terminal
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
+
+        // Main loop
+        let result = self.run_app(&mut terminal);
+
+        // Restore terminal
+        disable_raw_mode()?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
+        terminal.show_cursor()?;
+
+        result
+    }
+
+    fn run_app(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn std::error::Error>> {
+        loop {
+            // Draw UI
+            terminal.draw(|f| self.ui(f))?;
+
+            // Handle input with timeout
+            let timeout = Duration::from_millis(250);
+            if event::poll(timeout)? {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind == KeyEventKind::Press {
+                        match key.code {
+                            KeyCode::Char('q') => {
+                                self.should_quit = true;
+                            }
+                            KeyCode::Char('r') => {
+                                self.last_update = Instant::now().checked_sub(self.refresh_interval).unwrap_or(Instant::now());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
+            // Auto-refresh check
+            if self.last_update.elapsed() >= self.refresh_interval {
+                self.last_update = Instant::now();
+                // Trigger refresh if needed
+            }
+
+            if self.should_quit {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn ui(&self, f: &mut Frame) {
+        let size = f.area();
+
+        // Main layout
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),    // Header
+                Constraint::Min(8),       // Thread list
+                Constraint::Length(4),    // System performance
+                Constraint::Length(4),    // Storage status
+                Constraint::Length(1),    // Controls
+            ])
+            .split(size);
+
+        // Get current snapshot
+        let snapshot = if let Some(monitor) = &self.monitor {
+            if let Ok(guard) = monitor.lock() {
+                Some(guard.get_snapshot())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Render components
+        self.render_header(f, chunks[0], &snapshot);
+        self.render_thread_list(f, chunks[1], &snapshot);
+        self.render_system_performance(f, chunks[2], &snapshot);
+        self.render_storage_status(f, chunks[3], &snapshot);
+        self.render_controls(f, chunks[4]);
+    }
+
+    fn render_header(&self, f: &mut Frame, area: Rect, snapshot: &Option<MonitorSnapshot>) {
+        let title = if let Some(snap) = snapshot {
+            format!(
+                "Garbled Circuit Monitor [Process: {:.1}GB/{:.0}GB] Runtime: {}",
+                snap.system.process_memory_gb,
+                snap.system.total_memory_gb,
+                format_duration(snap.runtime)
+            )
+        } else {
+            "Garbled Circuit Monitor [Initializing...]".to_string()
+        };
+
+        let header_info = if let Some(snap) = snapshot {
+            format!(
+                "Workers: {}/{} | Circuit: {} wires | Progress: {:.1}%",
+                snap.system.active_workers,
+                snap.system.max_workers,
+                format_large_number(snap.circuit.num_wire),
+                snap.overall_progress
+            )
+        } else {
+            "Waiting for data...".to_string()
+        };
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(title)
+            .border_style(Style::default().fg(Color::Cyan));
+
+        let paragraph = Paragraph::new(header_info)
+            .block(block)
+            .wrap(Wrap { trim: true });
+
+        f.render_widget(paragraph, area);
+    }
+
+    fn render_thread_list(&self, f: &mut Frame, area: Rect, snapshot: &Option<MonitorSnapshot>) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title("Active Workers")
+            .border_style(Style::default().fg(Color::Green));
+
+        let items: Vec<ListItem> = if let Some(snap) = snapshot {
+            snap.threads.iter().map(|thread| {
+                let status_char = match thread.status {
+                    ThreadStatus::Starting => "⏳",
+                    ThreadStatus::Running => "🔄",
+                    ThreadStatus::Completing => "⏳",
+                    ThreadStatus::Finished => "✅",
+                    ThreadStatus::Error => "❌",
+                };
+
+                let progress_bar = create_progress_bar(thread.progress_percent, 20);
+                
+                let content = format!(
+                    "T{}: {} {:.1}% | {:.2}M g/s | {} | {:.1}GB | {}M gates",
+                    thread.thread_id,
+                    progress_bar,
+                    thread.progress_percent,
+                    thread.gates_per_second / 1_000_000.0,
+                    format_duration(thread.duration),
+                    thread.memory_usage_gb,
+                    thread.current_gate / 1_000_000
+                );
+
+                ListItem::new(Line::from(vec![
+                    Span::raw(status_char),
+                    Span::raw(" "),
+                    Span::raw(content),
+                ]))
+            }).collect()
+        } else {
+            vec![ListItem::new("No worker data available")]
+        };
+
+        let list = List::new(items)
+            .block(block)
+            .style(Style::default().fg(Color::White));
+
+        f.render_widget(list, area);
+    }
+
+    fn render_system_performance(&self, f: &mut Frame, area: Rect, snapshot: &Option<MonitorSnapshot>) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title("System Performance")
+            .border_style(Style::default().fg(Color::Yellow));
+
+        let content = if let Some(snap) = snapshot {
+            let eta = if snap.total_speed > 0.0 {
+                let remaining_gates = snap.circuit.total_gates.saturating_sub(snap.total_gates_processed);
+                let eta_seconds = remaining_gates as f64 / snap.total_speed;
+                format!("ETA: {}", format_duration(Duration::from_secs(eta_seconds as u64)))
+            } else {
+                "ETA: Calculating...".to_string()
+            };
+
+            format!(
+                "Total Speed: {:.2}M gates/s | Memory Rate: +{:.1}GB/h | {}\nProgress: {} {:.1}% | Total Runtime: {} | Memory: {:.1}GB peak",
+                snap.total_speed / 1_000_000.0,
+                snap.system.memory_rate_gb_per_hour,
+                eta,
+                create_progress_bar(snap.overall_progress, 30),
+                snap.overall_progress,
+                format_duration(snap.runtime),
+                snap.system.memory_peak_gb
+            )
+        } else {
+            "Waiting for performance data...".to_string()
+        };
+
+        let paragraph = Paragraph::new(content)
+            .block(block)
+            .wrap(Wrap { trim: true });
+
+        f.render_widget(paragraph, area);
+    }
+
+    fn render_storage_status(&self, f: &mut Frame, area: Rect, snapshot: &Option<MonitorSnapshot>) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title("Storage Status")
+            .border_style(Style::default().fg(Color::Magenta));
+
+        let content = if let Some(snap) = snapshot {
+            format!(
+                "Save Folder: {:.1}GB | Files: {} | Disk Free: {:.1}GB\nI/O Rate: Calculating... | Pending Tasks: {}",
+                snap.system.save_folder_size_gb,
+                snap.system.files_written,
+                snap.system.disk_free_gb,
+                snap.system.pending_tasks
+            )
+        } else {
+            "Waiting for storage data...".to_string()
+        };
+
+        let paragraph = Paragraph::new(content)
+            .block(block)
+            .wrap(Wrap { trim: true });
+
+        f.render_widget(paragraph, area);
+    }
+
+    fn render_controls(&self, f: &mut Frame, area: Rect) {
+        let controls = "[q]uit [r]efresh";
+        let paragraph = Paragraph::new(controls)
+            .style(Style::default().fg(Color::Gray));
+        
+        f.render_widget(paragraph, area);
+    }
+}
+
+fn create_progress_bar(percent: f64, width: usize) -> String {
+    let filled = ((percent / 100.0) * width as f64) as usize;
+    let empty = width.saturating_sub(filled);
+    format!("[{}{}]", "█".repeat(filled), "░".repeat(empty))
+}
+
+fn format_duration(duration: Duration) -> String {
+    let total_seconds = duration.as_secs();
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+
+    if hours > 0 {
+        format!("{}h {}m", hours, minutes)
+    } else if minutes > 0 {
+        format!("{}m {}s", minutes, seconds)
+    } else {
+        format!("{}s", seconds)
+    }
+}
+
+fn format_large_number(num: usize) -> String {
+    if num >= 1_000_000_000 {
+        format!("{:.1}B", num as f64 / 1_000_000_000.0)
+    } else if num >= 1_000_000 {
+        format!("{:.1}M", num as f64 / 1_000_000.0)
+    } else if num >= 1_000 {
+        format!("{:.1}K", num as f64 / 1_000.0)
+    } else {
+        format!("{}", num)
+    }
+}
+
+pub fn run_tui() -> Result<(), Box<dyn std::error::Error>> {
+    let mut app = TuiApp::new();
+    app.run()
+}
