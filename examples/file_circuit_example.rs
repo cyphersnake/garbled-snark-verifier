@@ -5,6 +5,7 @@ use garbled_snark_verifier::{
     circuit::{errors::CircuitError, file_gate_provider::FileGateProvider, GateProvider},
     Circuit, Delta, GarbledWire, GarbledWires, WireId, S,
 };
+use memory_stats;
 use rand::Rng;
 
 // Include wire values generated from main branch
@@ -74,6 +75,17 @@ fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     });
 
     circuit.gates.gates().enumerate().try_for_each(|(i, g)| {
+        if i > 0 && i % 100_000_000 == 0 {
+            if let Some(usage) = memory_stats::memory_stats() {
+                println!(
+                    "Processed {} gates - Physical: {:.2} MB, Virtual: {:.2} MB",
+                    i,
+                    usage.physical_mem as f64 / 1024.0 / 1024.0,
+                    usage.virtual_mem as f64 / 1024.0 / 1024.0
+                );
+            }
+        }
+
         match g.as_ref().garble::<H>(i, &mut wires, &delta, rng) {
             Ok(Some(row)) => {
                 log::debug!("garble_streaming: gate[{i}] table_entries={row:?}");

@@ -11,6 +11,7 @@ blake3 = { version = "1.6.1", features = ["traits-preview"] }
 crossbeam = "0.8.4"
 digest = "0.10"
 log = "0.4.27"
+memory-stats = "1.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-traits = "0.2"
 rand = "0.9.1"
