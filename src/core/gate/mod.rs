@@ -280,14 +280,16 @@ impl Gate {
                 Ok(None)
             }
             GateType::Not => {
-                assert_eq!(self.wire_a, self.wire_b);
-                assert_eq!(self.wire_b, self.wire_c);
+                //assert_eq!(self.wire_a, self.wire_b);
+                //assert_eq!(self.wire_b, self.wire_c);
 
-                self.wire_a(wires, &mut issue_fn)?;
+                let wire_a = self.wire_a(wires, &mut issue_fn)?.clone();
 
-                wires
-                    .toggle_wire_not_mark(self.wire_c)
-                    .map_err(|err| Error::InitWire { wire: "c", err })?;
+                //wires
+                //    .toggle_wire_not_mark(self.wire_c)
+                //    .map_err(|err| Error::InitWire { wire: "c", err })?;
+
+                self.init_wire_c(wires, wire_a.label1, wire_a.label0)?;
 
                 Ok(None)
             }
