@@ -74,6 +74,132 @@ struct ThreadStats {
     xor_result: S,
 }
 
+#[derive(Serialize)]
+struct ThreadResultExport {
+    thread_id: usize,
+    memory_usage_gb: f64,
+    xor_result_hex: String,
+    error: Option<String>,
+    hash160: Option<String>,
+}
+
+#[derive(Serialize)]
+struct MemoryPoint {
+    elapsed_seconds: f64,
+    memory_gb: f64,
+    active_workers: usize,
+}
+
+#[derive(Serialize)]
+struct MemoryAnalysisExport {
+    baseline_gb: f64,
+    peak_gb: f64,
+    final_gb: f64,
+    growth_rate_gb_per_hour: f64,
+    efficiency_gb_per_worker: f64,
+    peak_workers: usize,
+    memory_timeline: Vec<MemoryPoint>,
+}
+
+#[derive(Serialize)]
+struct ExperimentInfo {
+    timestamp: u64,
+    config_file_path: String,
+    circuit_file_path: String,
+    total_runtime_seconds: f64,
+    status: String,
+}
+
+#[derive(Serialize)]
+struct PerformanceExport {
+    total_gates_processed: usize,
+    peak_throughput_gates_per_sec: f64,
+    memory_per_gate_bytes: f64,
+}
+
+#[derive(Serialize)]
+struct ExperimentExport {
+    experiment: ExperimentInfo,
+    memory_analysis: MemoryAnalysisExport,
+    performance: PerformanceExport,
+    threads: Vec<ThreadResultExport>,
+}
+
+fn export_experiment_results_to_toml(
+    snapshot: &garbled_snark_verifier::process_monitor::MonitorSnapshot,
+    results: &[ThreadStats],
+    config_path: &str,
+    circuit_path: &str,
+    save_dir: &str,
+) -> std::io::Result<()> {
+    let experiment = ExperimentInfo {
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        config_file_path: config_path.to_string(),
+        circuit_file_path: circuit_path.to_string(),
+        total_runtime_seconds: snapshot.runtime.as_secs_f64(),
+        status: "completed".to_string(),
+    };
+
+    let timeline = snapshot
+        .system
+        .memory_history
+        .iter()
+        .map(|(d, m)| MemoryPoint {
+            elapsed_seconds: d.as_secs_f64(),
+            memory_gb: *m,
+            active_workers: snapshot.system.active_workers,
+        })
+        .collect();
+
+    let memory_analysis = MemoryAnalysisExport {
+        baseline_gb: snapshot.system.memory_baseline_gb,
+        peak_gb: snapshot.system.memory_peak_gb,
+        final_gb: snapshot.system.process_memory_gb,
+        growth_rate_gb_per_hour: snapshot.system.memory_rate_gb_per_hour,
+        efficiency_gb_per_worker: snapshot.system.memory_per_worker_gb,
+        peak_workers: snapshot.system.max_workers,
+        memory_timeline: timeline,
+    };
+
+    let performance = PerformanceExport {
+        total_gates_processed: snapshot.total_gates_processed,
+        peak_throughput_gates_per_sec: snapshot.total_speed,
+        memory_per_gate_bytes: if snapshot.total_gates_processed > 0 {
+            (snapshot.system.memory_peak_gb * 1024.0 * 1024.0 * 1024.0)
+                / snapshot.total_gates_processed as f64
+        } else {
+            0.0
+        },
+    };
+
+    let mut threads = Vec::new();
+    for (snap, stats) in snapshot.threads.iter().zip(results.iter()) {
+        threads.push(ThreadResultExport {
+            thread_id: snap.thread_id,
+            memory_usage_gb: snap.memory_usage_gb,
+            xor_result_hex: stats.xor_result.to_hex(),
+            error: snap.error_message.clone(),
+            hash160: snap.input_hash160.clone(),
+        });
+    }
+
+    let export = ExperimentExport {
+        experiment,
+        memory_analysis,
+        performance,
+        threads,
+    };
+
+    let toml_str = toml::to_string_pretty(&export).unwrap();
+    std::fs::create_dir_all(save_dir)?;
+    let path = format!("{}/experiment.toml", save_dir);
+    std::fs::write(&path, toml_str)?;
+    Ok(())
+}
+
 fn get_system_memory_info() -> Option<(f64, f64)> {
     use std::fs;
     
@@ -339,6 +465,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                         pending_tasks_clone.lock().unwrap().len(),
                     );
                     guard.update_storage_metrics();
+                    guard.save_snapshot_to_file();
                 }
             }
         }
@@ -435,6 +562,8 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
     thread::spawn(move || {
         let start_time = Instant::now();
         let mut rng = ChaCha8Rng::seed_from_u64(task.task_id as u64);
+        let thread_dir = format!("{}/{}", task.timestamped_save_path, task.task_id);
+        let _ = fs::create_dir_all(&thread_dir);
         
         // Create a new FileGateProvider for this thread first to get gate count
         let file_gate_provider = match FileGateProvider::new(&task.circuit_file_path) {
@@ -491,15 +620,28 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
         ) {
             Ok((_, xor_result)) => {
                 let duration = start_time.elapsed();
-                
+
                 // Update final status and result
                 if let Some(monitor) = ProcessMonitor::instance() {
                     if let Ok(guard) = monitor.lock() {
                         guard.update_thread_status(task.task_id, ThreadStatus::Finished);
                         guard.update_thread_result(task.task_id, xor_result);
+                        guard.save_snapshot_to_file();
                     }
                 }
-                
+
+                let result_export = ThreadResultExport {
+                    thread_id: task.task_id,
+                    memory_usage_gb: 0.0,
+                    xor_result_hex: xor_result.to_hex(),
+                    error: None,
+                    hash160: None,
+                };
+                let path = format!("{}/result.toml", thread_dir);
+                if let Ok(text) = toml::to_string_pretty(&result_export) {
+                    let _ = fs::write(path, text);
+                }
+
                 Ok(ThreadStats {
                     thread_id: task.task_id,
                     gates_processed: thread_circuit.gates.gate_count().unwrap_or(0),
@@ -512,7 +654,19 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
                 if let Some(monitor) = ProcessMonitor::instance() {
                     if let Ok(guard) = monitor.lock() {
                         guard.update_thread_error(task.task_id, format!("{:?}", e));
+                        guard.save_snapshot_to_file();
                     }
+                }
+                let result_export = ThreadResultExport {
+                    thread_id: task.task_id,
+                    memory_usage_gb: 0.0,
+                    xor_result_hex: String::new(),
+                    error: Some(format!("{:?}", e)),
+                    hash160: None,
+                };
+                let path = format!("{}/result.toml", thread_dir);
+                if let Ok(text) = toml::to_string_pretty(&result_export) {
+                    let _ = fs::write(path, text);
                 }
                 Err(e)
             }
@@ -974,6 +1128,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     stats.duration.as_secs_f64(),
                     gates_per_sec
                 );
+            }
+
+            if let Some(monitor) = ProcessMonitor::instance() {
+                if let Ok(guard) = monitor.lock() {
+                    let snap = guard.get_snapshot();
+                    let save_dir = guard.save_folder();
+                    if let Err(e) = export_experiment_results_to_toml(
+                        &snap,
+                        &results,
+                        &config_file_path,
+                        &circuit_file_path,
+                        &save_dir,
+                    ) {
+                        eprintln!("Failed to export results: {}", e);
+                    }
+                }
             }
         }
         Err(e) => {

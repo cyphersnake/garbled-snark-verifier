@@ -73,6 +73,15 @@ impl fmt::Debug for S {
     }
 }
 
+impl serde::Serialize for S {
+    fn serialize<SER>(&self, serializer: SER) -> Result<SER::Ok, SER::Error>
+    where
+        SER: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
 impl Add for S {
     type Output = Self;
 

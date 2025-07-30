@@ -10,11 +10,11 @@ use std::{
 };
 
 use once_cell::sync::Lazy;
-// use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::S;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub enum ThreadStatus {
     Starting,
     Running,
@@ -23,23 +23,26 @@ pub enum ThreadStatus {
     Error,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ThreadMetrics {
     pub thread_id: usize,
+    #[serde(serialize_with = "serialize_atomic_usize")]
     pub current_gate: Arc<AtomicUsize>,
     pub total_gates: usize,
     pub gates_per_second: f64,
     pub memory_usage_gb: f64,
     pub status: ThreadStatus,
     pub xor_result: Option<S>,
+    #[serde(serialize_with = "serialize_instant")]
     pub start_time: Instant,
+    #[serde(serialize_with = "serialize_duration")]
     pub duration: Duration,
     pub speed_history: VecDeque<f64>,
     pub error_message: Option<String>,
     pub input_hash160: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SystemMetrics {
     pub total_memory_gb: f64,
     pub available_memory_gb: f64,
@@ -53,13 +56,16 @@ pub struct SystemMetrics {
     pub save_folder_size_gb: f64,
     pub disk_free_gb: f64,
     pub files_written: usize,
+    #[serde(serialize_with = "serialize_memory_history")]
+    pub memory_history: Vec<(Duration, f64)>,
+    pub memory_per_worker_gb: f64,
     // Global context from config
     pub total_garbling_tasks: usize,
     pub completed_tasks: usize,
     pub failed_tasks: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CircuitInfo {
     pub num_wire: usize,
     pub input_wire_count: usize,
@@ -74,6 +80,7 @@ pub struct ProcessMonitor {
     circuit: CircuitInfo,
     start_time: Instant,
     save_folder_path: String,
+    stats_lock: Arc<Mutex<()>>,
 }
 
 static PROCESS_MONITOR: Lazy<Arc<Mutex<Option<ProcessMonitor>>>> = 
@@ -102,6 +109,8 @@ impl ProcessMonitor {
                 save_folder_size_gb: 0.0,
                 disk_free_gb: 0.0,
                 files_written: 0,
+                memory_history: Vec::new(),
+                memory_per_worker_gb: 0.0,
                 total_garbling_tasks,
                 completed_tasks: 0,
                 failed_tasks: 0,
@@ -109,6 +118,7 @@ impl ProcessMonitor {
             circuit: circuit_info,
             start_time: Instant::now(),
             save_folder_path,
+            stats_lock: Arc::new(Mutex::new(())),
         };
 
         *PROCESS_MONITOR.lock().unwrap() = Some(monitor);
@@ -123,6 +133,7 @@ impl ProcessMonitor {
                 circuit: monitor.circuit.clone(),
                 start_time: monitor.start_time,
                 save_folder_path: monitor.save_folder_path.clone(),
+                stats_lock: Arc::clone(&monitor.stats_lock),
             }))
         })
     }
@@ -208,6 +219,10 @@ impl ProcessMonitor {
         system.failed_tasks += 1;
     }
 
+    pub fn save_folder(&self) -> String {
+        self.save_folder_path.clone()
+    }
+
     pub fn update_system_metrics(
         &self,
         total_memory_gb: f64,
@@ -229,9 +244,16 @@ impl ProcessMonitor {
         // Calculate memory growth rate (GB/hour)
         let runtime_hours = self.start_time.elapsed().as_secs_f64() / 3600.0;
         if runtime_hours > 0.0 {
-            system.memory_rate_gb_per_hour = 
+            system.memory_rate_gb_per_hour =
                 (process_memory_gb - system.memory_baseline_gb) / runtime_hours;
         }
+
+        system.memory_history.push((self.start_time.elapsed(), process_memory_gb));
+        system.memory_per_worker_gb = if system.active_workers > 0 {
+            process_memory_gb / system.active_workers as f64
+        } else {
+            process_memory_gb
+        };
     }
 
     pub fn update_storage_metrics(&self) {
@@ -353,9 +375,18 @@ impl ProcessMonitor {
             overall_progress,
         }
     }
+
+    pub fn save_snapshot_to_file(&self) {
+        if let Ok(_guard) = self.stats_lock.lock() {
+            if let Ok(snapshot) = toml::to_string_pretty(&self.get_snapshot()) {
+                let path = format!("{}/global_stats.toml", self.save_folder_path);
+                let _ = std::fs::write(path, snapshot);
+            }
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ThreadSnapshot {
     pub thread_id: usize,
     pub current_gate: usize,
@@ -363,19 +394,56 @@ pub struct ThreadSnapshot {
     pub gates_per_second: f64,
     pub memory_usage_gb: f64,
     pub status: ThreadStatus,
+    #[serde(serialize_with = "serialize_duration")]
     pub duration: Duration,
     pub progress_percent: f64,
     pub error_message: Option<String>,
     pub input_hash160: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MonitorSnapshot {
     pub threads: Vec<ThreadSnapshot>,
     pub system: SystemMetrics,
     pub circuit: CircuitInfo,
+    #[serde(serialize_with = "serialize_duration")]
     pub runtime: Duration,
     pub total_gates_processed: usize,
     pub total_speed: f64,
     pub overall_progress: f64,
+}
+
+fn serialize_duration<S>(d: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_f64(d.as_secs_f64())
+}
+
+fn serialize_instant<S>(i: &Instant, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_f64(i.elapsed().as_secs_f64())
+}
+
+fn serialize_atomic_usize<S>(a: &Arc<AtomicUsize>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_u64(a.load(Ordering::Relaxed) as u64)
+}
+
+fn serialize_memory_history<S>(
+    history: &Vec<(Duration, f64)>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let list: Vec<(f64, f64)> = history
+        .iter()
+        .map(|(d, m)| (d.as_secs_f64(), *m))
+        .collect();
+    list.serialize(serializer)
 }
