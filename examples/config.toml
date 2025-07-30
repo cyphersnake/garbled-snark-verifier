@@ -9,6 +9,7 @@ circuit_file_path = "../verifier_gates.bin"
 # num_of_garbling = 4
 
 # Base directory for saving garbled data (required)
+# A timestamp subdirectory will be created automatically: {save_path}/{timestamp}/
 save_path = "./garbled_data"
 
 # Garbling IDs for which to save ciphertext tables (empty array means no ciphertext saving)

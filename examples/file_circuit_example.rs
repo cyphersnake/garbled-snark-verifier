@@ -13,7 +13,7 @@ use std::{
         Arc,
     },
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use bitcoin::hashes::{hash160, Hash as _H};
@@ -158,7 +158,15 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     save_path: &str,
     save_ciphertext_ids: &[usize],
 ) -> Result<Vec<ThreadStats>, CircuitError> {
+    // Create timestamp for this run
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let timestamp_dir = format!("{}/{}", save_path, timestamp);
+    
     println!("Starting {} independent garbling threads...", num_of_garbling);
+    println!("Saving to timestamped directory: {}", timestamp_dir);
 
     // Reserve space for thread progress lines
     for _ in 0..num_of_garbling {
@@ -172,7 +180,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
             let input_wires = circuit_template.input_wires.clone();
             let output_wires = circuit_template.output_wires.clone();
             let num_wire = circuit_template.num_wire;
-            let save_path = save_path.to_string();
+            let timestamped_save_path = timestamp_dir.clone();
             let should_save_ciphertexts = save_ciphertext_ids.contains(&id);
 
             thread::spawn(move || {
@@ -203,7 +211,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                     &thread_circuit,
                     &mut rng,
                     Some(thread_id),
-                    &save_path,
+                    &timestamped_save_path,
                     should_save_ciphertexts,
                 ) {
                     Ok((_, xor_result)) => {
