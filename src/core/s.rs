@@ -41,7 +41,7 @@ impl S {
     }
 
     pub fn hash(&self) -> Self {
-        Self(hash(&self.0))
+        Self(hash(self.0))
     }
 
     pub fn hash_together(a: Self, b: Self) -> Self {
