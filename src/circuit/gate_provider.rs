@@ -7,6 +7,15 @@ pub enum GateRef<'a> {
     Owned(Gate),
 }
 
+impl<'a> AsRef<Gate> for GateRef<'a> {
+    fn as_ref(&self) -> &Gate {
+        match &self {
+            Self::Borrowed(gate) => gate,
+            Self::Owned(gate) => gate,
+        }
+    }
+}
+
 impl<'a> GateRef<'a> {
     pub fn wire_a(&self) -> crate::WireId {
         match self {
@@ -84,4 +93,3 @@ impl GateProvider for Vec<Gate> {
         self.push(gate);
     }
 }
-

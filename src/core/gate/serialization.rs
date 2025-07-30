@@ -24,6 +24,7 @@ use thread::JoinHandle;
 
 /// Returns a channel receiver for streaming gates from file
 /// Designed for lazy loading of 11b+ gates
+#[allow(clippy::type_complexity)]
 pub fn read_gates_channel(
     path: impl AsRef<Path>,
 ) -> io::Result<(Receiver<Vec<Gate>>, JoinHandle<io::Result<()>>)> {
