@@ -98,18 +98,6 @@ impl<'a> Iterator for FileGateIterator<'a> {
     }
 }
 
-impl<'a> Drop for FileGateIterator<'a> {
-    fn drop(&mut self) {
-        // Drop the receiver first to signal the sender thread to stop
-        drop(&self.receiver);
-
-        // Then wait for the reader thread to finish
-        if let Some(handle) = self.reader_handle.take() {
-            let _ = handle.join();
-        }
-    }
-}
-
 impl GateProvider for FileGateProvider {
     type Iter<'a> = FileGateIterator<'a>;
 
