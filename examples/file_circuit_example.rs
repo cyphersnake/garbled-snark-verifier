@@ -21,6 +21,7 @@ use garbled_snark_verifier::{
     Circuit, Delta, GarbledWire, GarbledWires, WireId, S,
 };
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
 
 // Include wire values generated from main branch
 include!("../wire_values.rs");
@@ -56,7 +57,6 @@ struct ThreadStats {
     thread_id: usize,
     gates_processed: usize,
     duration: Duration,
-    delta: Delta,
     xor_result: S,
 }
 
@@ -159,7 +159,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
 
             thread::spawn(move || {
                 let start_time = Instant::now();
-                let mut rng = StdRng::seed_from_u64(id as u64);
+                let mut rng = ChaCha8Rng::seed_from_u64(id as u64);
 
                 // Create a new FileGateProvider for this thread
                 let file_gate_provider = match FileGateProvider::new(&circuit_file_path) {
@@ -186,13 +186,12 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                     &mut rng,
                     Some(thread_id),
                 ) {
-                    Ok((_, delta, xor_result)) => {
+                    Ok((_, xor_result)) => {
                         let duration = start_time.elapsed();
                         Ok(ThreadStats {
                             thread_id,
                             gates_processed: thread_circuit.gates.gate_count().unwrap_or(0),
                             duration,
-                            delta,
                             xor_result,
                         })
                     }
@@ -216,7 +215,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
 fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     circuit: &Circuit<G>,
     rng: &mut impl Rng,
-) -> Result<(GarbledWires, Delta, S), CircuitError> {
+) -> Result<(GarbledWires, S), CircuitError> {
     garble_with_streaming_thread::<H, G>(circuit, rng, None)
 }
 
@@ -243,14 +242,14 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     circuit: &Circuit<G>,
     rng: &mut impl Rng,
     thread_id: Option<usize>,
-) -> Result<(GarbledWires, Delta, S), CircuitError> {
+) -> Result<(GarbledWires, S), CircuitError> {
     log::debug!(
         "garble_streaming: start wires={} gates={:?}",
         circuit.num_wire,
         circuit.gates.gate_count()
     );
 
-    let delta = Delta::generate();
+    let delta = Delta::generate(rng);
     let mut wires = GarbledWires::new(circuit.num_wire);
     let mut issue_fn = || GarbledWire::random(rng, &delta);
 
@@ -353,14 +352,13 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     }
     let output_hash =
         <bitcoin::hashes::hash160::Hash as bitcoin::hashes::Hash>::hash(&all_output_bytes);
-
     println!(
         "Bitcoin hash160 of all output wires (garbled): {}",
         output_hash
     );
 
     log::debug!("garble_streaming: complete xor_result={xor_result:?}");
-    Ok((wires, delta, xor_result))
+    Ok((wires, xor_result))
 }
 
 fn evaluate_with_streaming<G: GateProvider>(

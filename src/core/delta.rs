@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use rand::{rng, Rng};
+use rand::Rng;
 
 use crate::S;
 
@@ -29,8 +29,8 @@ impl Delta {
     ///
     /// This ensures that XOR-ing with delta flips the LSB of the last byte,
     /// enabling safe use of point-and-permute.
-    pub fn generate() -> Self {
-        let mut s = rng().random::<[u8; 16]>();
+    pub fn generate(rng: &mut impl Rng) -> Self {
+        let mut s = rng.random::<[u8; 16]>();
         s[15] |= 1; // set LSB of last byte
         Self(S(s))
     }

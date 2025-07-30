@@ -67,7 +67,9 @@ mod tests {
         [(false, false), (false, true), (true, false), (true, true)];
 
     fn garble_consistency(gt: GateType) {
-        let delta = Delta::generate();
+        let mut rng = trng();
+
+        let delta = Delta::generate(&mut rng);
 
         #[derive(Debug, PartialEq, Eq)]
         struct FailedCase {
@@ -81,7 +83,6 @@ mod tests {
         let mut failed_cases = Vec::new();
 
         // Create wires with specific LSB patterns
-        let mut rng = trng();
         let a_label0 = S::random(&mut rng);
         let b_label0 = S::random(&mut rng);
         let a = GarbledWire::new(a_label0, a_label0 ^ &delta);
@@ -162,8 +163,8 @@ mod tests {
     fn test_different_hash_functions() {
         use sha2::Sha256;
 
-        let delta = Delta::generate();
         let mut rng = trng();
+        let delta = Delta::generate(&mut rng);
 
         let a_label0 = S::random(&mut rng);
         let b_label0 = S::random(&mut rng);

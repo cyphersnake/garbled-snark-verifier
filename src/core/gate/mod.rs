@@ -485,7 +485,7 @@ mod tests {
         [(false, false), (false, true), (true, false), (true, true)];
 
     fn create_test_delta() -> Delta {
-        Delta::generate()
+        Delta::generate(&mut trng())
     }
 
     fn issue_test_wire() -> GarbledWires {
