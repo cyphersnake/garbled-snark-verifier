@@ -109,7 +109,7 @@ impl BitXor<&S> for S {
     type Output = S;
 
     fn bitxor(mut self, rhs: &S) -> Self::Output {
-        for i in 0..32 {
+        for i in 0..16 {
             self.0[i] ^= rhs.0[i];
         }
         self
@@ -118,7 +118,7 @@ impl BitXor<&S> for S {
 
 impl BitXorAssign<&S> for S {
     fn bitxor_assign(&mut self, rhs: &S) {
-        for i in 0..32 {
+        for i in 0..16 {
             self.0[i] ^= rhs.0[i];
         }
     }
