@@ -5,14 +5,14 @@ use crate::{Delta, EvaluatedWire, GarbledWire, S};
 
 /// Generic hash function with unique tweak per gate using any digest implementation
 fn hash_gate_with_tweak<D: Digest + Default>(x: &S, tweak: GateId) -> S {
-    assert!(<D as Digest>::output_size() >= 32);
+    assert!(<D as Digest>::output_size() >= 16);
     let mut result = [0u8; 16];
 
     result.copy_from_slice(
         &D::default()
             .chain_update(x.0)
             .chain_update(tweak.to_le_bytes())
-            .finalize(),
+            .finalize()[0..16],
     );
 
     S(result)
@@ -59,7 +59,7 @@ pub(super) fn degarble<H: digest::Digest + Default + Clone>(
 mod tests {
 
     use super::*;
-    use crate::{Delta, GarbledWire, GateType, S, core::gate::GateId, test_utils::trng};
+    use crate::{core::gate::GateId, test_utils::trng, Delta, GarbledWire, GateType, S};
 
     const GATE_ID: GateId = 0;
 
