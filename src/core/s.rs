@@ -4,17 +4,20 @@ use std::{
     ops::{Add, BitXor, BitXorAssign},
 };
 
-use blake3::hash;
 use rand::Rng;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct S(pub [u8; 32]);
+pub struct S(pub [u8; 16]);
 
 impl S {
     pub const fn one() -> Self {
-        let mut s = [0_u8; 32];
-        s[31] = 1;
+        let mut s = [0_u8; 16];
+        s[15] = 1;
         Self(s)
+    }
+
+    pub const fn zero() -> Self {
+        Self([0_u8; 16])
     }
 
     pub fn to_hex(&self) -> String {
@@ -38,13 +41,13 @@ impl S {
     }
 
     pub fn hash(&self) -> Self {
-        Self(*hash(&self.0).as_bytes())
+        Self(hash(&self.0))
     }
 
     pub fn hash_together(a: Self, b: Self) -> Self {
         let mut h = a.0.to_vec();
         h.extend(b.0.to_vec());
-        Self(*hash(&h).as_bytes())
+        Self(hash(&h))
     }
 
     pub fn xor(a: Self, b: Self) -> Self {
@@ -58,6 +61,12 @@ impl S {
     }
 }
 
+fn hash(input: impl AsRef<[u8]>) -> [u8; 16] {
+    (blake3::hash(input.as_ref()).as_bytes()[0..16])
+        .try_into()
+        .unwrap()
+}
+
 impl fmt::Debug for S {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "S({})", self.to_hex())
@@ -68,7 +77,7 @@ impl Add for S {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let mut s = [0_u8; 32];
+        let mut s = [0_u8; 16];
         let mut carry = 0;
         for (i, (u, v)) in zip(self.0, rhs.0).enumerate().rev() {
             let x = (u as u32) + (v as u32) + carry;
@@ -83,12 +92,12 @@ impl BitXor for &S {
     type Output = S;
 
     fn bitxor(self, rhs: Self) -> Self::Output {
-        let mut out = [0u8; 32];
+        let mut out = [0u8; 16];
 
         // Why `Allow` here: the compiler will expand the call and remove the check on the fixed
         // array
         #[allow(clippy::needless_range_loop)]
-        for i in 0..32 {
+        for i in 0..16 {
             out[i] = self.0[i] ^ rhs.0[i];
         }
 
@@ -117,8 +126,9 @@ impl BitXorAssign<&S> for S {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rand::SeedableRng;
+
+    use super::*;
 
     fn rnd() -> S {
         S::random(&mut rand::rngs::StdRng::from_seed([0u8; 32]))
@@ -126,7 +136,7 @@ mod tests {
 
     #[test]
     fn test_xor_zero_identity() {
-        let zero = S([0u8; 32]);
+        let zero = S::zero();
         let a = rnd();
         assert_eq!(&a ^ &zero, a, "a ^ 0 should be a");
         assert_eq!(&zero ^ &a, a, "0 ^ a should be a");
@@ -136,7 +146,7 @@ mod tests {
     fn test_xor_self_is_zero() {
         let a = rnd();
         let result = &a ^ &a;
-        assert_eq!(result, S([0u8; 32]), "a ^ a should be 0");
+        assert_eq!(result, S::zero(), "a ^ a should be 0");
     }
 
     #[test]
@@ -156,9 +166,9 @@ mod tests {
 
     #[test]
     fn test_xor_known_value() {
-        let a = S([0xFF; 32]);
-        let b = S([0x0F; 32]);
-        let expected = S([0xF0; 32]);
+        let a = S([0xFF; 16]);
+        let b = S([0x0F; 16]);
+        let expected = S([0xF0; 16]);
         assert_eq!(&a ^ &b, expected);
     }
 

@@ -6,7 +6,7 @@ use crate::{Delta, EvaluatedWire, GarbledWire, S};
 /// Generic hash function with unique tweak per gate using any digest implementation
 fn hash_gate_with_tweak<D: Digest + Default>(x: &S, tweak: GateId) -> S {
     assert!(<D as Digest>::output_size() >= 32);
-    let mut result = [0u8; 32];
+    let mut result = [0u8; 16];
 
     result.copy_from_slice(
         &D::default()
