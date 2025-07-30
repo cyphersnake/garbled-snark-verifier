@@ -134,7 +134,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
             let input_wires = circuit_template.input_wires.clone();
             let output_wires = circuit_template.output_wires.clone();
             let num_wire = circuit_template.num_wire;
-            
+
             thread::spawn(move || {
                 let start_time = Instant::now();
                 let mut rng = StdRng::seed_from_u64(id as u64);
@@ -142,7 +142,12 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                 // Create a new FileGateProvider for this thread
                 let file_gate_provider = match FileGateProvider::new(&circuit_file_path) {
                     Ok(provider) => provider,
-                    Err(e) => return Err(CircuitError::GarblingFailed(format!("Failed to create FileGateProvider: {}", e))),
+                    Err(e) => {
+                        return Err(CircuitError::GarblingFailed(format!(
+                            "Failed to create FileGateProvider: {}",
+                            e
+                        )))
+                    }
                 };
 
                 // Create a new circuit for this thread
@@ -154,7 +159,11 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                     gate_count: Default::default(),
                 };
 
-                match garble_with_streaming_thread::<H, _>(&thread_circuit, &mut rng, Some(thread_id)) {
+                match garble_with_streaming_thread::<H, _>(
+                    &thread_circuit,
+                    &mut rng,
+                    Some(thread_id),
+                ) {
                     Ok((_, delta, xor_result)) => {
                         let duration = start_time.elapsed();
                         Ok(ThreadStats {
@@ -401,33 +410,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run circuit evaluation with progress tracking
     println!("\nRunning circuit evaluation with progress tracking...");
 
-    let start_time = Instant::now();
-    let _result = evaluate_with_streaming(&file_circuit, input_handler)?.collect::<Vec<_>>()[0].1;
-    let evaluation_duration = start_time.elapsed();
+    //let start_time = Instant::now();
+    //let _result = evaluate_with_streaming(&file_circuit, input_handler)?.collect::<Vec<_>>()[0].1;
+    //let evaluation_duration = start_time.elapsed();
 
-    // Display final evaluation statistics
-    let total_gates = file_circuit.gates.gate_count().unwrap_or(0);
-    let gates_per_sec = if evaluation_duration.as_secs_f64() > 0.0 {
-        total_gates as f64 / evaluation_duration.as_secs_f64()
-    } else {
-        0.0
-    };
+    //// Display final evaluation statistics
+    //let total_gates = file_circuit.gates.gate_count().unwrap_or(0);
+    //let gates_per_sec = if evaluation_duration.as_secs_f64() > 0.0 {
+    //    total_gates as f64 / evaluation_duration.as_secs_f64()
+    //} else {
+    //    0.0
+    //};
 
-    println!("\nEvaluation completed!");
-    println!("  Total gates: {total_gates}");
-    println!("  Total time: {:.2}s", evaluation_duration.as_secs_f64());
-    println!("  Average throughput: {gates_per_sec:.0} gates/s");
+    //println!("\nEvaluation completed!");
+    //println!("  Total gates: {total_gates}");
+    //println!("  Total time: {:.2}s", evaluation_duration.as_secs_f64());
+    //println!("  Average throughput: {gates_per_sec:.0} gates/s");
 
-    let final_mem_info = if let Some(usage) = memory_stats::memory_stats() {
-        format!(
-            "Physical: {:.2} MB, Virtual: {:.2} MB",
-            usage.physical_mem as f64 / 1024.0 / 1024.0,
-            usage.virtual_mem as f64 / 1024.0 / 1024.0
-        )
-    } else {
-        "Memory: N/A".to_string()
-    };
-    println!("  Final memory usage: {final_mem_info}");
+    //let final_mem_info = if let Some(usage) = memory_stats::memory_stats() {
+    //    format!(
+    //        "Physical: {:.2} MB, Virtual: {:.2} MB",
+    //        usage.physical_mem as f64 / 1024.0 / 1024.0,
+    //        usage.virtual_mem as f64 / 1024.0 / 1024.0
+    //    )
+    //} else {
+    //    "Memory: N/A".to_string()
+    //};
+    //println!("  Final memory usage: {final_mem_info}");
 
     println!("\nTesting multiple parallel garbling...");
     match run_multiple_garbling::<DefaultHasher>(&circuit_file_path, &file_circuit, num_threads) {
