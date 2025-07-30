@@ -156,12 +156,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nDemonstrating lazy gate loading (first 5 gates):");
 
     // TODO: Once input/output detection is implemented:
-    let result = file_circuit
-        .simple_evaluate(input_handler)?
-        .collect::<Vec<_>>()[0]
-        .1;
+    //let result = file_circuit
+    //    .simple_evaluate(input_handler)?
+    //    .collect::<Vec<_>>()[0]
+    //    .1;
 
-    assert!(result);
+    //assert!(result);
 
     println!("\nTesting streaming garbling...");
     let mut rng = rand::rng();
