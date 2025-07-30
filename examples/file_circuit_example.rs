@@ -22,6 +22,7 @@ use garbled_snark_verifier::{
 };
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use serde::Deserialize;
 
 // Include wire values generated from main branch
 include!("../wire_values.rs");
@@ -52,6 +53,12 @@ fn create_proof_input_handler() -> Box<dyn Fn(WireId) -> Option<bool>> {
 }
 
 type DefaultHasher = blake3::Hasher;
+
+#[derive(Deserialize)]
+struct Config {
+    circuit_file_path: String,
+    num_threads: Option<usize>,
+}
 
 struct ThreadStats {
     thread_id: usize,
@@ -428,20 +435,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("File-based Circuit Example");
     println!("=========================");
 
-    // Load circuit file - replace with your actual circuit file path
-    let circuit_file_path = std::env::args()
+    // Load config file from command line argument
+    let config_file_path = std::env::args()
         .nth(1)
-        .unwrap_or_else(|| "circuit.bin".to_string());
+        .ok_or("Usage: cargo run --example file_circuit_example <config.toml>")?;
 
-    // Get number of threads from command line argument
-    let num_threads = std::env::args()
-        .nth(2)
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or_else(|| {
-            thread::available_parallelism()
-                .map(|n| n.get())
-                .unwrap_or(4)
-        });
+    println!("Loading config file: {config_file_path}");
+
+    // Read and parse TOML config file
+    let config_contents = std::fs::read_to_string(&config_file_path)
+        .map_err(|e| format!("Failed to read config file '{}': {}", config_file_path, e))?;
+    
+    let config: Config = toml::from_str(&config_contents)
+        .map_err(|e| format!("Failed to parse config file '{}': {}", config_file_path, e))?;
+
+    let circuit_file_path = config.circuit_file_path;
+    let num_threads = config.num_threads.unwrap_or_else(|| {
+        thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4)
+    });
 
     println!("Loading circuit file: {circuit_file_path}");
     println!("Using {num_threads} threads for parallel garbling");

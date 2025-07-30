@@ -1,0 +1,9 @@
+# Configuration file for file_circuit_example.rs
+# This file configures the parameters for running the garbled circuit example
+
+# Path to the circuit file to load
+circuit_file_path = "../verifier_gates.bin"
+
+# Number of threads to use for parallel garbling
+# If not specified or commented out, will auto-detect based on available CPU cores
+# num_threads = 4
