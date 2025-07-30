@@ -53,6 +53,10 @@ pub struct SystemMetrics {
     pub save_folder_size_gb: f64,
     pub disk_free_gb: f64,
     pub files_written: usize,
+    // Global context from config
+    pub total_garbling_tasks: usize,
+    pub completed_tasks: usize,
+    pub failed_tasks: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +85,7 @@ impl ProcessMonitor {
         save_folder_path: String,
         initial_memory_gb: f64,
         max_workers: usize,
+        total_garbling_tasks: usize,
     ) {
         let monitor = ProcessMonitor {
             threads: Arc::new(Mutex::new(HashMap::new())),
@@ -97,6 +102,9 @@ impl ProcessMonitor {
                 save_folder_size_gb: 0.0,
                 disk_free_gb: 0.0,
                 files_written: 0,
+                total_garbling_tasks,
+                completed_tasks: 0,
+                failed_tasks: 0,
             })),
             circuit: circuit_info,
             start_time: Instant::now(),
@@ -188,6 +196,16 @@ impl ProcessMonitor {
         if let Some(thread) = self.threads.lock().unwrap().get_mut(&thread_id) {
             thread.memory_usage_gb = memory_gb;
         }
+    }
+
+    pub fn mark_task_completed(&self) {
+        let mut system = self.system.lock().unwrap();
+        system.completed_tasks += 1;
+    }
+
+    pub fn mark_task_failed(&self) {
+        let mut system = self.system.lock().unwrap();
+        system.failed_tasks += 1;
     }
 
     pub fn update_system_metrics(

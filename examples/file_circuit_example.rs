@@ -272,6 +272,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         timestamp_dir.clone(),
         initial_memory_gb,
         initial_workers,
+        num_of_garbling,
     );
 
     // Create task queue with all remaining tasks
@@ -350,12 +351,34 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                 let completed_handle = workers.remove(i);
                 match completed_handle.join() {
                     Ok(result) => {
-                        if let Ok(stats) = result {
-                            completed_results_clone.lock().unwrap().push(stats);
+                        match result {
+                            Ok(stats) => {
+                                completed_results_clone.lock().unwrap().push(stats);
+                                // Mark task as completed in ProcessMonitor
+                                if let Some(monitor) = ProcessMonitor::instance() {
+                                    if let Ok(guard) = monitor.lock() {
+                                        guard.mark_task_completed();
+                                    }
+                                }
+                            }
+                            Err(_) => {
+                                // Mark task as failed in ProcessMonitor
+                                if let Some(monitor) = ProcessMonitor::instance() {
+                                    if let Ok(guard) = monitor.lock() {
+                                        guard.mark_task_failed();
+                                    }
+                                }
+                            }
                         }
                     }
                     Err(_) => {
                         eprintln!("Worker thread panicked");
+                        // Mark task as failed in ProcessMonitor
+                        if let Some(monitor) = ProcessMonitor::instance() {
+                            if let Ok(guard) = monitor.lock() {
+                                guard.mark_task_failed();
+                            }
+                        }
                     }
                 }
             } else {

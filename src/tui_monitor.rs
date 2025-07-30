@@ -147,11 +147,15 @@ impl TuiApp {
 
         let header_info = if let Some(snap) = snapshot {
             format!(
-                "Workers: {}/{} | Circuit: {} wires | Progress: {:.1}%",
+                "Tasks: {}/{} (✅{} ❌{}) | Workers: {}/{} | Circuit: {} wires | Progress: {:.1}%",
+                snap.system.completed_tasks + snap.system.failed_tasks + snap.system.active_workers,
+                snap.system.total_garbling_tasks,
+                snap.system.completed_tasks,
+                snap.system.failed_tasks,
                 snap.system.active_workers,
                 snap.system.max_workers,
                 format_large_number(snap.circuit.num_wire),
-                snap.overall_progress
+                (snap.system.completed_tasks as f64 / snap.system.total_garbling_tasks as f64) * 100.0
             )
         } else {
             "Waiting for data...".to_string()
@@ -255,6 +259,11 @@ impl TuiApp {
             .border_style(Style::default().fg(Color::Yellow));
 
         let content = if let Some(snap) = snapshot {
+            let global_progress = (snap.system.completed_tasks as f64 / snap.system.total_garbling_tasks as f64) * 100.0;
+            let remaining_tasks = snap.system.total_garbling_tasks.saturating_sub(
+                snap.system.completed_tasks + snap.system.failed_tasks + snap.system.active_workers
+            );
+            
             let eta = if snap.total_speed > 0.0 {
                 let remaining_gates = snap.circuit.total_gates.saturating_sub(snap.total_gates_processed);
                 let eta_seconds = remaining_gates as f64 / snap.total_speed;
@@ -264,12 +273,13 @@ impl TuiApp {
             };
 
             format!(
-                "Total Speed: {:.2}M gates/s | Memory Rate: +{:.1}GB/h | {}\nProgress: {} {:.1}% | Total Runtime: {} | Memory: {:.1}GB peak",
+                "Global Tasks: {} {:.1}% | Waiting: {} | Total Speed: {:.2}M gates/s | {}\nMemory Rate: +{:.1}GB/h | Runtime: {} | Peak: {:.1}GB",
+                create_progress_bar(global_progress, 20),
+                global_progress,
+                remaining_tasks,
                 snap.total_speed / 1_000_000.0,
-                snap.system.memory_rate_gb_per_hour,
                 eta,
-                create_progress_bar(snap.overall_progress, 30),
-                snap.overall_progress,
+                snap.system.memory_rate_gb_per_hour,
                 format_duration(snap.runtime),
                 snap.system.memory_peak_gb
             )
