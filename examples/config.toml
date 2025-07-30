@@ -4,6 +4,13 @@
 # Path to the circuit file to load
 circuit_file_path = "../verifier_gates.bin"
 
-# Number of threads to use for parallel garbling
+# Number of parallel garblings to run
 # If not specified or commented out, will auto-detect based on available CPU cores
-# num_threads = 4
+# num_of_garbling = 4
+
+# Base directory for saving garbled data (required)
+save_path = "./garbled_data"
+
+# Garbling IDs for which to save ciphertext tables (empty array means no ciphertext saving)
+# All garblings always save input/output labels and ciphertext hash
+save_ciphertext_ids = [0, 2]

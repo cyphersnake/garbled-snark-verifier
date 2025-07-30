@@ -2,9 +2,11 @@
 
 use std::{
     collections::HashMap,
+    fs,
     hash::Hash,
-    io::{self, Write},
+    io::{self, BufWriter, Write},
     mem::{self, MaybeUninit},
+    path::Path,
     ptr,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -22,7 +24,7 @@ use garbled_snark_verifier::{
 };
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 // Include wire values generated from main branch
 include!("../wire_values.rs");
@@ -54,10 +56,15 @@ fn create_proof_input_handler() -> Box<dyn Fn(WireId) -> Option<bool>> {
 
 type DefaultHasher = blake3::Hasher;
 
+#[derive(Serialize, Deserialize)]
+struct LabelPair([u8; 16], [u8; 16]);
+
 #[derive(Deserialize)]
 struct Config {
     circuit_file_path: String,
-    num_threads: Option<usize>,
+    num_of_garbling: Option<usize>,
+    save_path: String,
+    save_ciphertext_ids: Vec<usize>,
 }
 
 struct ThreadStats {
@@ -147,22 +154,26 @@ fn spawn_progress_monitor(
 fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     circuit_file_path: &str,
     circuit_template: &Circuit<FileGateProvider>,
-    num_threads: usize,
+    num_of_garbling: usize,
+    save_path: &str,
+    save_ciphertext_ids: &[usize],
 ) -> Result<Vec<ThreadStats>, CircuitError> {
-    println!("Starting {} independent garbling threads...", num_threads);
+    println!("Starting {} independent garbling threads...", num_of_garbling);
 
     // Reserve space for thread progress lines
-    for _ in 0..num_threads {
+    for _ in 0..num_of_garbling {
         println!();
     }
 
-    let handles: Vec<_> = (0..num_threads)
+    let handles: Vec<_> = (0..num_of_garbling)
         .enumerate()
         .map(|(id, thread_id)| {
             let circuit_file_path = circuit_file_path.to_string();
             let input_wires = circuit_template.input_wires.clone();
             let output_wires = circuit_template.output_wires.clone();
             let num_wire = circuit_template.num_wire;
+            let save_path = save_path.to_string();
+            let should_save_ciphertexts = save_ciphertext_ids.contains(&id);
 
             thread::spawn(move || {
                 let start_time = Instant::now();
@@ -192,6 +203,8 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                     &thread_circuit,
                     &mut rng,
                     Some(thread_id),
+                    &save_path,
+                    should_save_ciphertexts,
                 ) {
                     Ok((_, xor_result)) => {
                         let duration = start_time.elapsed();
@@ -223,7 +236,7 @@ fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     circuit: &Circuit<G>,
     rng: &mut impl Rng,
 ) -> Result<(GarbledWires, S), CircuitError> {
-    garble_with_streaming_thread::<H, G>(circuit, rng, None)
+    garble_with_streaming_thread::<H, G>(circuit, rng, None, "", false)
 }
 
 #[inline(always)]
@@ -249,12 +262,36 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     circuit: &Circuit<G>,
     rng: &mut impl Rng,
     thread_id: Option<usize>,
+    save_path: &str,
+    should_save_ciphertexts: bool,
 ) -> Result<(GarbledWires, S), CircuitError> {
     log::debug!(
         "garble_streaming: start wires={} gates={:?}",
         circuit.num_wire,
         circuit.gates.gate_count()
     );
+
+    // Create save directory if needed
+    let save_dir = if !save_path.is_empty() && thread_id.is_some() {
+        let dir_path = format!("{}/{}", save_path, thread_id.unwrap());
+        fs::create_dir_all(&dir_path).map_err(|e| {
+            CircuitError::GarblingFailed(format!("Failed to create save directory {}: {}", dir_path, e))
+        })?;
+        Some(dir_path)
+    } else {
+        None
+    };
+
+    // Setup ciphertext file writer if needed
+    let mut ciphertext_writer = if should_save_ciphertexts && save_dir.is_some() {
+        let ciphertext_path = format!("{}/ciphertexts.bin", save_dir.as_ref().unwrap());
+        let file = fs::File::create(&ciphertext_path).map_err(|e| {
+            CircuitError::GarblingFailed(format!("Failed to create ciphertext file {}: {}", ciphertext_path, e))
+        })?;
+        Some(BufWriter::new(file))
+    } else {
+        None
+    };
 
     let delta = Delta::generate(rng);
     let mut wires = GarbledWires::new(circuit.num_wire);
@@ -286,6 +323,23 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
         input_hash
     );
 
+    // Save input labels if save directory exists
+    if let Some(ref save_dir) = save_dir {
+        let mut input_labels = Vec::new();
+        for &wire_id in &circuit.input_wires {
+            if let Ok(garbled_wire) = wires.get(wire_id) {
+                input_labels.push(LabelPair(garbled_wire.label0.0, garbled_wire.label1.0));
+            }
+        }
+        let input_labels_path = format!("{}/inputs_labels.json", save_dir);
+        let input_labels_json = serde_json::to_string_pretty(&input_labels).map_err(|e| {
+            CircuitError::GarblingFailed(format!("Failed to serialize input labels: {}", e))
+        })?;
+        fs::write(&input_labels_path, input_labels_json).map_err(|e| {
+            CircuitError::GarblingFailed(format!("Failed to write input labels to {}: {}", input_labels_path, e))
+        })?;
+    }
+
     log::debug!("garble_streaming: delta={delta:?}");
 
     let (sender, receiver) = channel::bounded::<S>(10000);
@@ -306,7 +360,23 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
                     .try_into()
                     .unwrap(),
             );
+            
+            // Write ciphertext to file if writer is available
+            if let Some(ref mut writer) = ciphertext_writer {
+                if let Err(e) = writer.write_all(&ciphertext.0) {
+                    log::error!("Failed to write ciphertext to file: {}", e);
+                    break;
+                }
+            }
         }
+        
+        // Flush the writer if it exists
+        if let Some(ref mut writer) = ciphertext_writer {
+            if let Err(e) = writer.flush() {
+                log::error!("Failed to flush ciphertext file: {}", e);
+            }
+        }
+        
         xor_result
     });
 
@@ -363,6 +433,30 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
         "Bitcoin hash160 of all output wires (garbled): {}",
         output_hash
     );
+
+    // Save output labels and ciphertext hash if save directory exists
+    if let Some(ref save_dir) = save_dir {
+        // Save output labels
+        let mut output_labels = Vec::new();
+        for &wire_id in &circuit.output_wires {
+            if let Ok(garbled_wire) = wires.get(wire_id) {
+                output_labels.push(LabelPair(garbled_wire.label0.0, garbled_wire.label1.0));
+            }
+        }
+        let output_labels_path = format!("{}/output_labels.json", save_dir);
+        let output_labels_json = serde_json::to_string_pretty(&output_labels).map_err(|e| {
+            CircuitError::GarblingFailed(format!("Failed to serialize output labels: {}", e))
+        })?;
+        fs::write(&output_labels_path, output_labels_json).map_err(|e| {
+            CircuitError::GarblingFailed(format!("Failed to write output labels to {}: {}", output_labels_path, e))
+        })?;
+
+        // Save ciphertext hash
+        let hash_path = format!("{}/ciphertext_hash.bin", save_dir);
+        fs::write(&hash_path, &xor_result.0).map_err(|e| {
+            CircuitError::GarblingFailed(format!("Failed to write ciphertext hash to {}: {}", hash_path, e))
+        })?;
+    }
 
     log::debug!("garble_streaming: complete xor_result={xor_result:?}");
     Ok((wires, xor_result))
@@ -450,14 +544,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Failed to parse config file '{}': {}", config_file_path, e))?;
 
     let circuit_file_path = config.circuit_file_path;
-    let num_threads = config.num_threads.unwrap_or_else(|| {
+    let num_of_garbling = config.num_of_garbling.unwrap_or_else(|| {
         thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4)
     });
+    let save_path = config.save_path;
+    let save_ciphertext_ids = config.save_ciphertext_ids;
 
     println!("Loading circuit file: {circuit_file_path}");
-    println!("Using {num_threads} threads for parallel garbling");
+    println!("Using {num_of_garbling} garblings for parallel processing");
+    println!("Save path: {save_path}");
+    println!("Save ciphertext for garbling IDs: {:?}", save_ciphertext_ids);
 
     // Create a FileGateProvider from the circuit file
     let file_gate_provider = FileGateProvider::new(&circuit_file_path)?;
@@ -527,7 +625,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //println!("  Final memory usage: {final_mem_info}");
 
     println!("\nTesting multiple parallel garbling...");
-    match run_multiple_garbling::<DefaultHasher>(&circuit_file_path, &file_circuit, num_threads) {
+    match run_multiple_garbling::<DefaultHasher>(&circuit_file_path, &file_circuit, num_of_garbling, &save_path, &save_ciphertext_ids) {
         Ok(results) => {
             println!(
                 "All {} garbling threads completed successfully!",
