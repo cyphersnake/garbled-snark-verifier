@@ -5,7 +5,7 @@ use log::debug;
 use rand::Rng;
 
 pub use crate::GateType;
-use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId, S};
+use crate::{Delta, EvaluatedWire, GarbledWire, GarbledWires, S, WireError, WireId};
 
 mod garbling;
 pub mod serialization;

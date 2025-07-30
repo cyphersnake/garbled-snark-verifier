@@ -6,27 +6,30 @@ use std::{
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::{Line, Span},
-    widgets::{
-        Block, Borders, List, ListItem, Paragraph, 
-        Wrap,
-    },
-    Frame, Terminal,
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
 };
 
-use crate::process_monitor::{ProcessMonitor, ThreadStatus, MonitorSnapshot};
+use crate::process_monitor::{MonitorSnapshot, ProcessMonitor, ThreadStatus};
 
 pub struct TuiApp {
     should_quit: bool,
     last_update: Instant,
     refresh_interval: Duration,
     monitor: Option<std::sync::Arc<std::sync::Mutex<ProcessMonitor>>>,
+}
+
+impl Default for TuiApp {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TuiApp {
@@ -62,26 +65,30 @@ impl TuiApp {
         result
     }
 
-    fn run_app(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> Result<(), Box<dyn std::error::Error>> {
+    fn run_app(
+        &mut self,
+        terminal: &mut Terminal<CrosstermBackend<Stdout>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         loop {
             // Draw UI
             terminal.draw(|f| self.ui(f))?;
 
             // Handle input with timeout
             let timeout = Duration::from_millis(250);
-            if event::poll(timeout)? {
-                if let Event::Key(key) = event::read()? {
-                    if key.kind == KeyEventKind::Press {
-                        match key.code {
-                            KeyCode::Char('q') => {
-                                self.should_quit = true;
-                            }
-                            KeyCode::Char('r') => {
-                                self.last_update = Instant::now().checked_sub(self.refresh_interval).unwrap_or(Instant::now());
-                            }
-                            _ => {}
-                        }
+            if event::poll(timeout)?
+                && let Event::Key(key) = event::read()?
+                && key.kind == KeyEventKind::Press
+            {
+                match key.code {
+                    KeyCode::Char('q') => {
+                        self.should_quit = true;
                     }
+                    KeyCode::Char('r') => {
+                        self.last_update = Instant::now()
+                            .checked_sub(self.refresh_interval)
+                            .unwrap_or(Instant::now());
+                    }
+                    _ => {}
                 }
             }
 
@@ -106,11 +113,11 @@ impl TuiApp {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),    // Header
-                Constraint::Min(8),       // Thread list
-                Constraint::Length(4),    // System performance
-                Constraint::Length(4),    // Storage status
-                Constraint::Length(1),    // Controls
+                Constraint::Length(3), // Header
+                Constraint::Min(8),    // Thread list
+                Constraint::Length(4), // System performance
+                Constraint::Length(4), // Storage status
+                Constraint::Length(1), // Controls
             ])
             .split(size);
 
@@ -155,7 +162,8 @@ impl TuiApp {
                 snap.system.active_workers,
                 snap.system.max_workers,
                 format_large_number(snap.circuit.num_wire),
-                (snap.system.completed_tasks as f64 / snap.system.total_garbling_tasks as f64) * 100.0
+                (snap.system.completed_tasks as f64 / snap.system.total_garbling_tasks as f64)
+                    * 100.0
             )
         } else {
             "Waiting for data...".to_string()
@@ -174,72 +182,72 @@ impl TuiApp {
     }
 
     fn render_thread_list(&self, f: &mut Frame, area: Rect, snapshot: &Option<MonitorSnapshot>) {
-        let thread_count = if let Some(snap) = snapshot { 
-            snap.threads.len() 
-        } else { 
-            0 
+        let thread_count = if let Some(snap) = snapshot {
+            snap.threads.len()
+        } else {
+            0
         };
-        
+
         let block = Block::default()
             .borders(Borders::ALL)
-            .title(format!("Active Workers [{}]", thread_count))
+            .title(format!("Active Workers [{thread_count}]"))
             .border_style(Style::default().fg(Color::Green));
 
         let items: Vec<ListItem> = if let Some(snap) = snapshot {
             if snap.threads.is_empty() {
                 vec![ListItem::new("No worker threads detected")]
             } else {
-                snap.threads.iter().map(|thread| {
-                let status_char = match thread.status {
-                    ThreadStatus::Starting => "⏳",
-                    ThreadStatus::Running => "🔄",
-                    ThreadStatus::Completing => "⏳",
-                    ThreadStatus::Finished => "✅",
-                    ThreadStatus::Error => "❌",
-                };
+                snap.threads
+                    .iter()
+                    .map(|thread| {
+                        let status_char = match thread.status {
+                            ThreadStatus::Starting => "⏳",
+                            ThreadStatus::Running => "🔄",
+                            ThreadStatus::Completing => "⏳",
+                            ThreadStatus::Finished => "✅",
+                            ThreadStatus::Error => "❌",
+                        };
 
-                let content = if thread.status == ThreadStatus::Error {
-                    // Show error message for failed threads
-                    let error_msg = thread.error_message.as_deref().unwrap_or("Unknown error");
-                    format!(
-                        "T{}: ERROR - {}",
-                        thread.thread_id,
-                        error_msg
-                    )
-                } else {
-                    // Normal progress display - no per-thread memory, show global info
-                    let progress_bar = create_progress_bar(thread.progress_percent, 10);
-                    let hash_display = if let Some(ref hash) = thread.input_hash160 {
-                        format!(" | Hash: {}...", &hash[0..8.min(hash.len())])
-                    } else {
-                        String::new()
-                    };
-                    format!(
-                        "T{}: {} {:.1}% | {:.2}M g/s | {} | {}M gates{}",
-                        thread.thread_id,
-                        progress_bar,
-                        thread.progress_percent,
-                        thread.gates_per_second / 1_000_000.0,
-                        format_duration(thread.duration),
-                        thread.current_gate / 1_000_000,
-                        hash_display
-                    )
-                };
+                        let content = if thread.status == ThreadStatus::Error {
+                            // Show error message for failed threads
+                            let error_msg =
+                                thread.error_message.as_deref().unwrap_or("Unknown error");
+                            format!("T{}: ERROR - {}", thread.thread_id, error_msg)
+                        } else {
+                            // Normal progress display - no per-thread memory, show global info
+                            let progress_bar = create_progress_bar(thread.progress_percent, 10);
+                            let hash_display = if let Some(ref hash) = thread.input_hash160 {
+                                format!(" | Hash: {}...", &hash[0..8.min(hash.len())])
+                            } else {
+                                String::new()
+                            };
+                            format!(
+                                "T{}: {} {:.1}% | {:.2}M g/s | {} | {}M gates{}",
+                                thread.thread_id,
+                                progress_bar,
+                                thread.progress_percent,
+                                thread.gates_per_second / 1_000_000.0,
+                                format_duration(thread.duration),
+                                thread.current_gate / 1_000_000,
+                                hash_display
+                            )
+                        };
 
-                if thread.status == ThreadStatus::Error {
-                    ListItem::new(Line::from(vec![
-                        Span::raw(status_char),
-                        Span::raw(" "),
-                        Span::styled(content, Style::default().fg(Color::Red)),
-                    ]))
-                } else {
-                    ListItem::new(Line::from(vec![
-                        Span::raw(status_char),
-                        Span::raw(" "),
-                        Span::raw(content),
-                    ]))
-                }
-            }).collect()
+                        if thread.status == ThreadStatus::Error {
+                            ListItem::new(Line::from(vec![
+                                Span::raw(status_char),
+                                Span::raw(" "),
+                                Span::styled(content, Style::default().fg(Color::Red)),
+                            ]))
+                        } else {
+                            ListItem::new(Line::from(vec![
+                                Span::raw(status_char),
+                                Span::raw(" "),
+                                Span::raw(content),
+                            ]))
+                        }
+                    })
+                    .collect()
             }
         } else {
             vec![ListItem::new("No worker data available")]
@@ -252,22 +260,35 @@ impl TuiApp {
         f.render_widget(list, area);
     }
 
-    fn render_system_performance(&self, f: &mut Frame, area: Rect, snapshot: &Option<MonitorSnapshot>) {
+    fn render_system_performance(
+        &self,
+        f: &mut Frame,
+        area: Rect,
+        snapshot: &Option<MonitorSnapshot>,
+    ) {
         let block = Block::default()
             .borders(Borders::ALL)
             .title("System Performance")
             .border_style(Style::default().fg(Color::Yellow));
 
         let content = if let Some(snap) = snapshot {
-            let global_progress = (snap.system.completed_tasks as f64 / snap.system.total_garbling_tasks as f64) * 100.0;
+            let global_progress = (snap.system.completed_tasks as f64
+                / snap.system.total_garbling_tasks as f64)
+                * 100.0;
             let remaining_tasks = snap.system.total_garbling_tasks.saturating_sub(
-                snap.system.completed_tasks + snap.system.failed_tasks + snap.system.active_workers
+                snap.system.completed_tasks + snap.system.failed_tasks + snap.system.active_workers,
             );
-            
+
             let eta = if snap.total_speed > 0.0 {
-                let remaining_gates = snap.circuit.total_gates.saturating_sub(snap.total_gates_processed);
+                let remaining_gates = snap
+                    .circuit
+                    .total_gates
+                    .saturating_sub(snap.total_gates_processed);
                 let eta_seconds = remaining_gates as f64 / snap.total_speed;
-                format!("ETA: {}", format_duration(Duration::from_secs(eta_seconds as u64)))
+                format!(
+                    "ETA: {}",
+                    format_duration(Duration::from_secs(eta_seconds as u64))
+                )
             } else {
                 "ETA: Calculating...".to_string()
             };
@@ -321,9 +342,8 @@ impl TuiApp {
 
     fn render_controls(&self, f: &mut Frame, area: Rect) {
         let controls = "[q]uit [r]efresh";
-        let paragraph = Paragraph::new(controls)
-            .style(Style::default().fg(Color::Gray));
-        
+        let paragraph = Paragraph::new(controls).style(Style::default().fg(Color::Gray));
+
         f.render_widget(paragraph, area);
     }
 }
@@ -341,11 +361,11 @@ fn format_duration(duration: Duration) -> String {
     let seconds = total_seconds % 60;
 
     if hours > 0 {
-        format!("{}h {}m", hours, minutes)
+        format!("{hours}h {minutes}m")
     } else if minutes > 0 {
-        format!("{}m {}s", minutes, seconds)
+        format!("{minutes}m {seconds}s")
     } else {
-        format!("{}s", seconds)
+        format!("{seconds}s")
     }
 }
 
@@ -357,7 +377,7 @@ fn format_large_number(num: usize) -> String {
     } else if num >= 1_000 {
         format!("{:.1}K", num as f64 / 1_000.0)
     } else {
-        format!("{}", num)
+        format!("{num}")
     }
 }
 

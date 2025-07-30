@@ -82,10 +82,10 @@ impl Circuit {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::test_utils::trng;
     use test_log::test;
 
     use super::*;
+    use crate::test_utils::trng;
 
     #[test]
     fn not_not() {

@@ -1,9 +1,9 @@
 use rand::Rng;
 
 use super::{
-    errors::CircuitError, evaluation::EvaluatedCircuit, structure::Circuit, Error, FinalizedCircuit,
+    Error, FinalizedCircuit, errors::CircuitError, evaluation::EvaluatedCircuit, structure::Circuit,
 };
-use crate::{Delta, GarbledWire, GarbledWires, WireId, S};
+use crate::{Delta, GarbledWire, GarbledWires, S, WireId};
 
 type DefaultHasher = blake3::Hasher;
 

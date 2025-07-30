@@ -152,10 +152,12 @@ impl FinalizedCircuit {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use rand::SeedableRng;
+
     use super::*;
     use crate::{Circuit, EvaluatedWire, Gate, GateType, S, WireId};
-    use rand::SeedableRng;
-    use std::collections::HashMap;
 
     fn test_rng() -> rand::rngs::StdRng {
         rand::rngs::StdRng::from_seed([42u8; 32])

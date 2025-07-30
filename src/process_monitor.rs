@@ -3,15 +3,15 @@ use std::{
     fs,
     path::Path,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
 
 use once_cell::sync::Lazy;
-// use serde::{Deserialize, Serialize};
 
+// use serde::{Deserialize, Serialize};
 use crate::S;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -76,7 +76,7 @@ pub struct ProcessMonitor {
     save_folder_path: String,
 }
 
-static PROCESS_MONITOR: Lazy<Arc<Mutex<Option<ProcessMonitor>>>> = 
+static PROCESS_MONITOR: Lazy<Arc<Mutex<Option<ProcessMonitor>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
 
 impl ProcessMonitor {
@@ -129,7 +129,7 @@ impl ProcessMonitor {
 
     pub fn register_thread(&self, thread_id: usize, total_gates: usize) -> Arc<AtomicUsize> {
         let gate_counter = Arc::new(AtomicUsize::new(0));
-        
+
         let thread_metrics = ThreadMetrics {
             thread_id,
             current_gate: Arc::clone(&gate_counter),
@@ -145,22 +145,25 @@ impl ProcessMonitor {
             input_hash160: None,
         };
 
-        self.threads.lock().unwrap().insert(thread_id, thread_metrics);
-        
+        self.threads
+            .lock()
+            .unwrap()
+            .insert(thread_id, thread_metrics);
+
         // Update active workers count
         let mut system = self.system.lock().unwrap();
         system.active_workers += 1;
-        
+
         gate_counter
     }
 
     pub fn update_thread_status(&self, thread_id: usize, status: ThreadStatus) {
         if let Some(thread) = self.threads.lock().unwrap().get_mut(&thread_id) {
             thread.status = status;
-            
+
             if status == ThreadStatus::Finished || status == ThreadStatus::Error {
                 thread.duration = thread.start_time.elapsed();
-                
+
                 // Update active workers count
                 let mut system = self.system.lock().unwrap();
                 system.active_workers = system.active_workers.saturating_sub(1);
@@ -179,7 +182,7 @@ impl ProcessMonitor {
             thread.status = ThreadStatus::Error;
             thread.error_message = Some(error_message);
             thread.duration = thread.start_time.elapsed();
-            
+
             // Update active workers count
             let mut system = self.system.lock().unwrap();
             system.active_workers = system.active_workers.saturating_sub(1);
@@ -229,7 +232,7 @@ impl ProcessMonitor {
         // Calculate memory growth rate (GB/hour)
         let runtime_hours = self.start_time.elapsed().as_secs_f64() / 3600.0;
         if runtime_hours > 0.0 {
-            system.memory_rate_gb_per_hour = 
+            system.memory_rate_gb_per_hour =
                 (process_memory_gb - system.memory_baseline_gb) / runtime_hours;
         }
     }
@@ -253,7 +256,11 @@ impl ProcessMonitor {
         let mut file_count = 0usize;
 
         if Path::new(path).exists() {
-            fn visit_dir(dir: &Path, total_size: &mut u64, file_count: &mut usize) -> Result<(), std::io::Error> {
+            fn visit_dir(
+                dir: &Path,
+                total_size: &mut u64,
+                file_count: &mut usize,
+            ) -> Result<(), std::io::Error> {
                 for entry in fs::read_dir(dir)? {
                     let entry = entry?;
                     let path = entry.path();
@@ -276,24 +283,21 @@ impl ProcessMonitor {
     fn get_disk_space(&self, path: &str) -> Result<f64, std::io::Error> {
         // Try to read disk space from /proc/mounts and statvfs
         use std::process::Command;
-        
-        let output = Command::new("df")
-            .arg("-BG")
-            .arg(path)
-            .output()?;
-            
+
+        let output = Command::new("df").arg("-BG").arg(path).output()?;
+
         if output.status.success() {
             let output_str = String::from_utf8_lossy(&output.stdout);
             if let Some(line) = output_str.lines().nth(1) {
                 let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 4 {
-                    if let Ok(available_gb) = parts[3].trim_end_matches('G').parse::<f64>() {
-                        return Ok(available_gb);
-                    }
+                if parts.len() >= 4
+                    && let Ok(available_gb) = parts[3].trim_end_matches('G').parse::<f64>()
+                {
+                    return Ok(available_gb);
                 }
             }
         }
-        
+
         // Fallback: use available memory * 10 as rough disk estimate
         let fallback = if let Some(usage) = memory_stats::memory_stats() {
             (usage.virtual_mem as f64 / 1024.0 / 1024.0 / 1024.0) * 10.0
@@ -312,7 +316,11 @@ impl ProcessMonitor {
         for (_, thread) in threads.iter() {
             let current_gate = thread.current_gate.load(Ordering::Relaxed);
             let elapsed = thread.start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 { current_gate as f64 / elapsed } else { 0.0 };
+            let speed = if elapsed > 0.0 {
+                current_gate as f64 / elapsed
+            } else {
+                0.0
+            };
 
             thread_snapshots.push(ThreadSnapshot {
                 thread_id: thread.thread_id,
@@ -333,10 +341,8 @@ impl ProcessMonitor {
         }
 
         // Calculate aggregate metrics
-        let total_gates_processed: usize = thread_snapshots.iter()
-            .map(|t| t.current_gate).sum();
-        let total_speed: f64 = thread_snapshots.iter()
-            .map(|t| t.gates_per_second).sum();
+        let total_gates_processed: usize = thread_snapshots.iter().map(|t| t.current_gate).sum();
+        let total_speed: f64 = thread_snapshots.iter().map(|t| t.gates_per_second).sum();
         let overall_progress = if self.circuit.total_gates > 0 {
             (total_gates_processed as f64 / self.circuit.total_gates as f64) * 100.0
         } else {

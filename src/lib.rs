@@ -13,7 +13,10 @@ pub use core::{
     wire::{EvaluatedWire, GarbledWire, GarbledWires, WireError, WireId},
 };
 
-pub use circuit::{Circuit, CircuitError, EvaluatedCircuit, FinalizedCircuit, GarbledCircuit, GateProvider, GateRef};
+pub use circuit::{
+    Circuit, CircuitError, EvaluatedCircuit, FinalizedCircuit, GarbledCircuit, GateProvider,
+    GateRef,
+};
 pub use math::*;
 
 #[cfg(test)]

@@ -8,8 +8,8 @@ use std::{
 
 use super::{GateProvider, GateRef};
 use crate::{
-    core::gate::serialization::{read_gates_channel, FILE_MAGIC},
     Gate,
+    core::gate::serialization::{FILE_MAGIC, read_gates_channel},
 };
 
 /// A gate provider that lazily streams gates from a file using channels.

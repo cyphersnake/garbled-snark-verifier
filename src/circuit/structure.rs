@@ -1,7 +1,7 @@
 use bitvec::prelude::*;
 
-use crate::{Gate, WireId, core::gate_type::GateCount};
 use super::GateProvider;
+use crate::{Gate, WireId, core::gate_type::GateCount};
 
 #[derive(Clone, Debug)]
 pub struct Circuit<G = Vec<Gate>>

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{
     self,
     fs::File,
@@ -19,7 +21,7 @@ fn read_id_from_slice(slice: &[u8]) -> u64 {
 
 const GATE_SIZE: usize = 16;
 const CHUNK_SIZE: usize = 8 * 1024 * 1024; // 8MB, кратно GATE_SIZE
-                                           // use
+// use
 use crossbeam::channel::Receiver;
 use thread::JoinHandle;
 

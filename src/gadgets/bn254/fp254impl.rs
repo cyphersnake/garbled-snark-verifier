@@ -6,8 +6,8 @@ use num_traits::{One, Zero};
 
 use super::super::bigint::{self, BigIntWires};
 use crate::{
-    gadgets::bigint::select, math::montgomery::calculate_montgomery_constants, Circuit, Gate,
-    WireId,
+    Circuit, Gate, WireId, gadgets::bigint::select,
+    math::montgomery::calculate_montgomery_constants,
 };
 
 /// Core trait for BN254 field implementation with 254-bit prime field arithmetic

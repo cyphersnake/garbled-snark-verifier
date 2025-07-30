@@ -7,18 +7,19 @@ use std::{
     mem::MaybeUninit,
     ptr,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
     },
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
 use crossbeam::channel;
 use garbled_snark_verifier::{
-    circuit::{errors::CircuitError, file_gate_provider::FileGateProvider, GateProvider},
-    process_monitor::{ProcessMonitor, CircuitInfo, ThreadStatus},
+    Circuit, Delta, GarbledWire, GarbledWires, S, WireId,
+    circuit::{GateProvider, errors::CircuitError, file_gate_provider::FileGateProvider},
+    process_monitor::{CircuitInfo, ProcessMonitor, ThreadStatus},
     tui_monitor::run_tui,
-    Circuit, Delta, GarbledWire, GarbledWires, WireId, S,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -71,19 +72,20 @@ struct ThreadStats {
     thread_id: usize,
     gates_processed: usize,
     duration: Duration,
+    #[allow(dead_code)]
     xor_result: S,
 }
 
 fn get_system_memory_info() -> Option<(f64, f64)> {
     use std::fs;
-    
+
     // Try to read /proc/meminfo for more accurate system memory info
     if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
         let mut total_mem_kb = None;
         let mut available_mem_kb = None;
         let mut swap_total_kb = None;
         let mut swap_free_kb = None;
-        
+
         for line in meminfo.lines() {
             if line.starts_with("MemTotal:") {
                 total_mem_kb = line.split_whitespace().nth(1)?.parse::<u64>().ok();
@@ -95,15 +97,16 @@ fn get_system_memory_info() -> Option<(f64, f64)> {
                 swap_free_kb = line.split_whitespace().nth(1)?.parse::<u64>().ok();
             }
         }
-        
-        if let (Some(total), Some(available), Some(swap_total), Some(swap_free)) = 
-            (total_mem_kb, available_mem_kb, swap_total_kb, swap_free_kb) {
+
+        if let (Some(total), Some(available), Some(swap_total), Some(swap_free)) =
+            (total_mem_kb, available_mem_kb, swap_total_kb, swap_free_kb)
+        {
             let total_virtual_gb = (total + swap_total) as f64 / 1024.0 / 1024.0;
             let available_virtual_gb = (available + swap_free) as f64 / 1024.0 / 1024.0;
             return Some((total_virtual_gb, available_virtual_gb));
         }
     }
-    
+
     // Fallback to memory_stats crate if /proc/meminfo fails
     memory_stats::memory_stats().map(|stats| {
         let virtual_gb = stats.virtual_mem as f64 / 1024.0 / 1024.0 / 1024.0;
@@ -130,14 +133,6 @@ struct TaskConfig {
     num_wire: usize,
     timestamped_save_path: String,
     should_save_ciphertexts: bool,
-}
-
-struct VirtualMemoryController {
-    max_workers: usize,
-    worker_memory_gb: u64,
-    memory_check_interval: Duration,
-    pending_tasks: Arc<Mutex<VecDeque<TaskConfig>>>,
-    active_workers: Arc<Mutex<Vec<thread::JoinHandle<Result<ThreadStats, CircuitError>>>>>,
 }
 
 fn spawn_progress_monitor(
@@ -187,7 +182,7 @@ fn spawn_progress_monitor(
             };
 
             let thread_prefix = if let Some(id) = thread_id {
-                format!("Thread {}: ", id)
+                format!("Thread {id}: ")
             } else {
                 String::new()
             };
@@ -196,13 +191,13 @@ fn spawn_progress_monitor(
                 // For multi-threaded: use ANSI escape codes to update specific line
                 print!(
                     "\x1b[s\x1b[{}H{}Gate: {current_count}/{total_gates} ({percentage:.1}%) | Speed: {gates_per_second:.0} gates/s | {mem_info}\x1b[K\x1b[u",
-                    id + 1, thread_prefix
+                    id + 1,
+                    thread_prefix
                 );
             } else {
                 // For single-threaded: use carriage return
                 print!(
-                    "\r{}Gate: {current_count}/{total_gates} ({percentage:.1}%) | Speed: {gates_per_second:.0} gates/s | {mem_info}",
-                    thread_prefix
+                    "\r{thread_prefix}Gate: {current_count}/{total_gates} ({percentage:.1}%) | Speed: {gates_per_second:.0} gates/s | {mem_info}"
                 );
             }
             io::stdout().flush().unwrap();
@@ -231,11 +226,13 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let timestamp_dir = format!("{}/{}", save_path, timestamp);
-    
-    println!("Starting {} independent garbling threads with smart memory management...", num_of_garbling);
-    println!("Worker memory requirement: {}GB per thread", worker_memory_gb);
-    println!("Saving to timestamped directory: {}", timestamp_dir);
+    let timestamp_dir = format!("{save_path}/{timestamp}");
+
+    println!(
+        "Starting {num_of_garbling} independent garbling threads with smart memory management..."
+    );
+    println!("Worker memory requirement: {worker_memory_gb}GB per thread");
+    println!("Saving to timestamped directory: {timestamp_dir}");
 
     // Initialize ProcessMonitor
     let circuit_info = CircuitInfo {
@@ -244,7 +241,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         output_wire_count: circuit_template.output_wires.len(),
         total_gates: circuit_template.gates.gate_count().unwrap_or(0),
     };
-    
+
     let initial_memory_gb = if let Some(usage) = memory_stats::memory_stats() {
         usage.virtual_mem as f64 / 1024.0 / 1024.0 / 1024.0
     } else {
@@ -252,11 +249,12 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     };
 
     // Get system memory information
-    let (total_virtual_gb, available_virtual_gb) = get_system_memory_info()
-        .ok_or_else(|| CircuitError::GarblingFailed("Failed to get system memory stats".to_string()))?;
-    
-    println!("Total virtual memory (RAM + Swap): {:.2}GB", total_virtual_gb);
-    println!("Available virtual memory: {:.2}GB", available_virtual_gb);
+    let (total_virtual_gb, available_virtual_gb) = get_system_memory_info().ok_or_else(|| {
+        CircuitError::GarblingFailed("Failed to get system memory stats".to_string())
+    })?;
+
+    println!("Total virtual memory (RAM + Swap): {total_virtual_gb:.2}GB");
+    println!("Available virtual memory: {available_virtual_gb:.2}GB");
 
     // Calculate initial number of workers we can start
     let initial_workers = calculate_max_workers_by_virtual_memory(
@@ -264,9 +262,9 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         worker_memory_gb,
         num_of_garbling,
     );
-    
-    println!("Starting with {} workers (limited by memory)", initial_workers);
-    
+
+    println!("Starting with {initial_workers} workers (limited by memory)");
+
     ProcessMonitor::initialize(
         circuit_info,
         timestamp_dir.clone(),
@@ -305,11 +303,11 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
             active_workers.lock().unwrap().push(handle);
         }
     }
-    
+
     // Start TUI in background thread
     let tui_handle = thread::spawn(|| {
         if let Err(e) = run_tui() {
-            eprintln!("TUI failed: {}", e);
+            eprintln!("TUI failed: {e}");
         }
     });
 
@@ -317,10 +315,10 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     let pending_tasks_clone = Arc::clone(&pending_tasks);
     let active_workers_clone = Arc::clone(&active_workers);
     let completed_results_clone = Arc::clone(&completed_results);
-    
+
     loop {
         thread::sleep(memory_check_interval);
-        
+
         // Update system metrics
         if let Some((total_gb, available_gb)) = get_system_memory_info() {
             // Get REAL current process memory usage from system
@@ -329,20 +327,20 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
             } else {
                 0.0 // If can't get real measurement, show 0 instead of fake calculations
             };
-            
-            if let Some(monitor) = ProcessMonitor::instance() {
-                if let Ok(guard) = monitor.lock() {
-                    guard.update_system_metrics(
-                        total_gb,
-                        available_gb,
-                        process_memory_gb,
-                        pending_tasks_clone.lock().unwrap().len(),
-                    );
-                    guard.update_storage_metrics();
-                }
+
+            if let Some(monitor) = ProcessMonitor::instance()
+                && let Ok(guard) = monitor.lock()
+            {
+                guard.update_system_metrics(
+                    total_gb,
+                    available_gb,
+                    process_memory_gb,
+                    pending_tasks_clone.lock().unwrap().len(),
+                );
+                guard.update_storage_metrics();
             }
         }
-        
+
         // Check for completed workers
         let mut workers = active_workers_clone.lock().unwrap();
         let mut i = 0;
@@ -355,18 +353,18 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                             Ok(stats) => {
                                 completed_results_clone.lock().unwrap().push(stats);
                                 // Mark task as completed in ProcessMonitor
-                                if let Some(monitor) = ProcessMonitor::instance() {
-                                    if let Ok(guard) = monitor.lock() {
-                                        guard.mark_task_completed();
-                                    }
+                                if let Some(monitor) = ProcessMonitor::instance()
+                                    && let Ok(guard) = monitor.lock()
+                                {
+                                    guard.mark_task_completed();
                                 }
                             }
                             Err(_) => {
                                 // Mark task as failed in ProcessMonitor
-                                if let Some(monitor) = ProcessMonitor::instance() {
-                                    if let Ok(guard) = monitor.lock() {
-                                        guard.mark_task_failed();
-                                    }
+                                if let Some(monitor) = ProcessMonitor::instance()
+                                    && let Ok(guard) = monitor.lock()
+                                {
+                                    guard.mark_task_failed();
                                 }
                             }
                         }
@@ -374,10 +372,10 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                     Err(_) => {
                         eprintln!("Worker thread panicked");
                         // Mark task as failed in ProcessMonitor
-                        if let Some(monitor) = ProcessMonitor::instance() {
-                            if let Ok(guard) = monitor.lock() {
-                                guard.mark_task_failed();
-                            }
+                        if let Some(monitor) = ProcessMonitor::instance()
+                            && let Ok(guard) = monitor.lock()
+                        {
+                            guard.mark_task_failed();
                         }
                     }
                 }
@@ -385,32 +383,32 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                 i += 1;
             }
         }
-        
+
         // Check if we can start more workers
         let pending_count = pending_tasks_clone.lock().unwrap().len();
         let active_count = workers.len();
-        
+
         if pending_count == 0 && active_count == 0 {
             break; // All tasks completed
         }
-        
-        if pending_count > 0 {
-            if let Some((_, current_available_gb)) = get_system_memory_info() {
-                let max_new_workers = calculate_max_workers_by_virtual_memory(
-                    current_available_gb,
-                    worker_memory_gb,
-                    pending_count,
-                );
-                
-                let workers_to_start = max_new_workers.saturating_sub(active_count);
-                
-                for _ in 0..workers_to_start {
-                    if let Some(task) = pending_tasks_clone.lock().unwrap().pop_front() {
-                        let handle = spawn_worker_task::<H>(task, Arc::clone(&completed_results_clone));
-                        workers.push(handle);
-                    } else {
-                        break;
-                    }
+
+        if pending_count > 0
+            && let Some((_, current_available_gb)) = get_system_memory_info()
+        {
+            let max_new_workers = calculate_max_workers_by_virtual_memory(
+                current_available_gb,
+                worker_memory_gb,
+                pending_count,
+            );
+
+            let workers_to_start = max_new_workers.saturating_sub(active_count);
+
+            for _ in 0..workers_to_start {
+                if let Some(task) = pending_tasks_clone.lock().unwrap().pop_front() {
+                    let handle = spawn_worker_task::<H>(task, Arc::clone(&completed_results_clone));
+                    workers.push(handle);
+                } else {
+                    break;
                 }
             }
         }
@@ -418,7 +416,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
 
     // Wait for TUI to finish (user pressed 'q')
     let _ = tui_handle.join();
-    
+
     // Extract final results
     let results = Arc::try_unwrap(completed_results)
         .map_err(|_| CircuitError::GarblingFailed("Failed to extract results".to_string()))?
@@ -435,19 +433,19 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
     thread::spawn(move || {
         let start_time = Instant::now();
         let mut rng = ChaCha8Rng::seed_from_u64(task.task_id as u64);
-        
+
         // Create a new FileGateProvider for this thread first to get gate count
         let file_gate_provider = match FileGateProvider::new(&task.circuit_file_path) {
             Ok(provider) => provider,
             Err(e) => {
-                let error_msg = format!("Failed to create FileGateProvider: {}", e);
+                let error_msg = format!("Failed to create FileGateProvider: {e}");
                 // Update ProcessMonitor with error
-                if let Some(monitor) = ProcessMonitor::instance() {
-                    if let Ok(guard) = monitor.lock() {
-                        guard.update_thread_error(task.task_id, error_msg.clone());
-                    }
+                if let Some(monitor) = ProcessMonitor::instance()
+                    && let Ok(guard) = monitor.lock()
+                {
+                    guard.update_thread_error(task.task_id, error_msg.clone());
                 }
-                return Err(CircuitError::GarblingFailed(error_msg))
+                return Err(CircuitError::GarblingFailed(error_msg));
             }
         };
 
@@ -475,12 +473,12 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
         };
 
         // Update status to running
-        if let Some(monitor) = ProcessMonitor::instance() {
-            if let Ok(guard) = monitor.lock() {
-                guard.update_thread_status(task.task_id, ThreadStatus::Running);
-            }
+        if let Some(monitor) = ProcessMonitor::instance()
+            && let Ok(guard) = monitor.lock()
+        {
+            guard.update_thread_status(task.task_id, ThreadStatus::Running);
         }
-        
+
         match garble_with_streaming_thread::<H, _>(
             &thread_circuit,
             &mut rng,
@@ -491,15 +489,15 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
         ) {
             Ok((_, xor_result)) => {
                 let duration = start_time.elapsed();
-                
+
                 // Update final status and result
-                if let Some(monitor) = ProcessMonitor::instance() {
-                    if let Ok(guard) = monitor.lock() {
-                        guard.update_thread_status(task.task_id, ThreadStatus::Finished);
-                        guard.update_thread_result(task.task_id, xor_result);
-                    }
+                if let Some(monitor) = ProcessMonitor::instance()
+                    && let Ok(guard) = monitor.lock()
+                {
+                    guard.update_thread_status(task.task_id, ThreadStatus::Finished);
+                    guard.update_thread_result(task.task_id, xor_result);
                 }
-                
+
                 Ok(ThreadStats {
                     thread_id: task.task_id,
                     gates_processed: thread_circuit.gates.gate_count().unwrap_or(0),
@@ -509,22 +507,15 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
             }
             Err(e) => {
                 // Update error status with error message
-                if let Some(monitor) = ProcessMonitor::instance() {
-                    if let Ok(guard) = monitor.lock() {
-                        guard.update_thread_error(task.task_id, format!("{:?}", e));
-                    }
+                if let Some(monitor) = ProcessMonitor::instance()
+                    && let Ok(guard) = monitor.lock()
+                {
+                    guard.update_thread_error(task.task_id, format!("{e:?}"));
                 }
                 Err(e)
             }
         }
     })
-}
-
-fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
-    circuit: &Circuit<G>,
-    rng: &mut impl Rng,
-) -> Result<(GarbledWires, S), CircuitError> {
-    garble_with_streaming_thread::<H, G>(circuit, rng, None, "", false, None)
 }
 
 #[inline(always)]
@@ -564,7 +555,7 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     let save_dir = if !save_path.is_empty() && thread_id.is_some() {
         let dir_path = format!("{}/{}", save_path, thread_id.unwrap());
         fs::create_dir_all(&dir_path).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to create save directory {}: {}", dir_path, e))
+            CircuitError::GarblingFailed(format!("Failed to create save directory {dir_path}: {e}"))
         })?;
         Some(dir_path)
     } else {
@@ -575,7 +566,9 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     let mut ciphertext_writer = if should_save_ciphertexts && save_dir.is_some() {
         let ciphertext_path = format!("{}/ciphertexts.bin", save_dir.as_ref().unwrap());
         let file = fs::File::create(&ciphertext_path).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to create ciphertext file {}: {}", ciphertext_path, e))
+            CircuitError::GarblingFailed(format!(
+                "Failed to create ciphertext file {ciphertext_path}: {e}"
+            ))
         })?;
         Some(BufWriter::new(file))
     } else {
@@ -608,12 +601,11 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
         <bitcoin::hashes::hash160::Hash as bitcoin::hashes::Hash>::hash(&all_input_bytes);
 
     // Report hash160 to ProcessMonitor instead of printing
-    if let Some(id) = thread_id {
-        if let Some(monitor) = ProcessMonitor::instance() {
-            if let Ok(guard) = monitor.lock() {
-                guard.update_thread_hash160(id, format!("{:?}", input_hash));
-            }
-        }
+    if let Some(id) = thread_id
+        && let Some(monitor) = ProcessMonitor::instance()
+        && let Ok(guard) = monitor.lock()
+    {
+        guard.update_thread_hash160(id, format!("{input_hash:?}"));
     }
 
     // Save input labels if save directory exists
@@ -624,12 +616,14 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
                 input_labels.push(LabelPair(garbled_wire.label0.0, garbled_wire.label1.0));
             }
         }
-        let input_labels_path = format!("{}/inputs_labels.json", save_dir);
+        let input_labels_path = format!("{save_dir}/inputs_labels.json");
         let input_labels_json = serde_json::to_string_pretty(&input_labels).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to serialize input labels: {}", e))
+            CircuitError::GarblingFailed(format!("Failed to serialize input labels: {e}"))
         })?;
         fs::write(&input_labels_path, input_labels_json).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to write input labels to {}: {}", input_labels_path, e))
+            CircuitError::GarblingFailed(format!(
+                "Failed to write input labels to {input_labels_path}: {e}"
+            ))
         })?;
     }
 
@@ -647,7 +641,11 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     // Spawn progress monitoring thread only if we don't have external counter (avoid double monitoring)
     let total_gates = circuit.gates.gate_count().unwrap_or(0);
     let progress_thread = if should_spawn_monitor {
-        Some(spawn_progress_monitor(gate_counter.clone(), total_gates, thread_id))
+        Some(spawn_progress_monitor(
+            gate_counter.clone(),
+            total_gates,
+            thread_id,
+        ))
     } else {
         None
     };
@@ -660,23 +658,23 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
                     .try_into()
                     .unwrap(),
             );
-            
+
             // Write ciphertext to file if writer is available
-            if let Some(ref mut writer) = ciphertext_writer {
-                if let Err(e) = writer.write_all(&ciphertext.0) {
-                    log::error!("Failed to write ciphertext to file: {}", e);
-                    break;
-                }
+            if let Some(ref mut writer) = ciphertext_writer
+                && let Err(e) = writer.write_all(&ciphertext.0)
+            {
+                log::error!("Failed to write ciphertext to file: {e}");
+                break;
             }
         }
-        
+
         // Flush the writer if it exists
-        if let Some(ref mut writer) = ciphertext_writer {
-            if let Err(e) = writer.flush() {
-                log::error!("Failed to flush ciphertext file: {}", e);
-            }
+        if let Some(ref mut writer) = ciphertext_writer
+            && let Err(e) = writer.flush()
+        {
+            log::error!("Failed to flush ciphertext file: {e}");
         }
-        
+
         xor_result
     });
 
@@ -729,11 +727,11 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
             all_output_bytes.extend_from_slice(&garbled_wire.label1.0);
         }
     }
-    let output_hash =
-        <bitcoin::hashes::hash160::Hash as bitcoin::hashes::Hash>::hash(&all_output_bytes);
-    // Output hash computed - don't print to avoid TUI interference
 
-    // Save output labels and ciphertext hash if save directory exists
+    // TODO reflect in TUI for finished threads
+    let _output_hash =
+        <bitcoin::hashes::hash160::Hash as bitcoin::hashes::Hash>::hash(&all_output_bytes);
+
     if let Some(ref save_dir) = save_dir {
         // Save output labels
         let mut output_labels = Vec::new();
@@ -742,18 +740,22 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
                 output_labels.push(LabelPair(garbled_wire.label0.0, garbled_wire.label1.0));
             }
         }
-        let output_labels_path = format!("{}/output_labels.json", save_dir);
+        let output_labels_path = format!("{save_dir}/output_labels.json");
         let output_labels_json = serde_json::to_string_pretty(&output_labels).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to serialize output labels: {}", e))
+            CircuitError::GarblingFailed(format!("Failed to serialize output labels: {e}"))
         })?;
         fs::write(&output_labels_path, output_labels_json).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to write output labels to {}: {}", output_labels_path, e))
+            CircuitError::GarblingFailed(format!(
+                "Failed to write output labels to {output_labels_path}: {e}"
+            ))
         })?;
 
         // Save ciphertext hash
-        let hash_path = format!("{}/ciphertext_hash.bin", save_dir);
-        fs::write(&hash_path, &xor_result.0).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to write ciphertext hash to {}: {}", hash_path, e))
+        let hash_path = format!("{save_dir}/ciphertext_hash.bin");
+        fs::write(&hash_path, xor_result.0).map_err(|e| {
+            CircuitError::GarblingFailed(format!(
+                "Failed to write ciphertext hash to {hash_path}: {e}"
+            ))
         })?;
     }
 
@@ -761,68 +763,68 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     Ok((wires, xor_result))
 }
 
-fn evaluate_with_streaming<G: GateProvider>(
-    circuit: &Circuit<G>,
-    get_input: impl Fn(WireId) -> Option<bool>,
-) -> Result<impl Iterator<Item = (WireId, bool)>, garbled_snark_verifier::circuit::evaluation::Error>
-{
-    log::debug!(
-        "evaluate_streaming: start wires={} gates={:?}",
-        circuit.num_wire,
-        circuit.gates.gate_count()
-    );
-
-    use bitvec::prelude::*;
-    let mut wire_values = bitvec![0; circuit.num_wire];
-
-    // Initialize constant wires
-    wire_values.set(circuit.get_false_wire_constant().0, false);
-    wire_values.set(circuit.get_true_wire_constant().0, true);
-
-    // Initialize input wires
-    for &wire_id in &circuit.input_wires {
-        let value = get_input(wire_id)
-            .ok_or(garbled_snark_verifier::circuit::evaluation::Error::LostInput(wire_id))?;
-        wire_values.set(wire_id.0, value);
-    }
-
-    // Progress tracking with atomic counter
-    let gate_counter = Arc::new(AtomicUsize::new(0));
-
-    // Spawn progress monitoring thread
-    let total_gates = circuit.gates.gate_count().unwrap_or(0);
-    let progress_thread = spawn_progress_monitor(gate_counter.clone(), total_gates, None);
-
-    // Process gates with progress tracking
-    circuit
-        .gates
-        .gates()
-        .enumerate()
-        .try_for_each(|(i, gate)| {
-            gate_counter.store(i + 1, Ordering::Relaxed);
-
-            let a = wire_values[gate.wire_a().0];
-            let b = wire_values[gate.wire_b().0];
-            let result = gate.gate_type().f()(a, b);
-            wire_values.set(gate.wire_c().0, result);
-
-            log::debug!("evaluate_streaming: gate[{i}] a={a} b={b} result={result}");
-
-            Ok::<(), garbled_snark_verifier::circuit::evaluation::Error>(())
-        })?;
-
-    // Wait for progress thread to finish and print final newline
-    gate_counter.store(usize::MAX, Ordering::Relaxed);
-    let _ = progress_thread.join();
-    println!();
-
-    log::debug!("evaluate_streaming: complete");
-
-    Ok(circuit
-        .output_wires
-        .iter()
-        .map(move |&wire_id| (wire_id, wire_values[wire_id.0])))
-}
+//fn evaluate_with_streaming<G: GateProvider>(
+//    circuit: &Circuit<G>,
+//    get_input: impl Fn(WireId) -> Option<bool>,
+//) -> Result<impl Iterator<Item = (WireId, bool)>, garbled_snark_verifier::circuit::evaluation::Error>
+//{
+//    log::debug!(
+//        "evaluate_streaming: start wires={} gates={:?}",
+//        circuit.num_wire,
+//        circuit.gates.gate_count()
+//    );
+//
+//    use bitvec::prelude::*;
+//    let mut wire_values = bitvec![0; circuit.num_wire];
+//
+//    // Initialize constant wires
+//    wire_values.set(circuit.get_false_wire_constant().0, false);
+//    wire_values.set(circuit.get_true_wire_constant().0, true);
+//
+//    // Initialize input wires
+//    for &wire_id in &circuit.input_wires {
+//        let value = get_input(wire_id)
+//            .ok_or(garbled_snark_verifier::circuit::evaluation::Error::LostInput(wire_id))?;
+//        wire_values.set(wire_id.0, value);
+//    }
+//
+//    // Progress tracking with atomic counter
+//    let gate_counter = Arc::new(AtomicUsize::new(0));
+//
+//    // Spawn progress monitoring thread
+//    let total_gates = circuit.gates.gate_count().unwrap_or(0);
+//    let progress_thread = spawn_progress_monitor(gate_counter.clone(), total_gates, None);
+//
+//    // Process gates with progress tracking
+//    circuit
+//        .gates
+//        .gates()
+//        .enumerate()
+//        .try_for_each(|(i, gate)| {
+//            gate_counter.store(i + 1, Ordering::Relaxed);
+//
+//            let a = wire_values[gate.wire_a().0];
+//            let b = wire_values[gate.wire_b().0];
+//            let result = gate.gate_type().f()(a, b);
+//            wire_values.set(gate.wire_c().0, result);
+//
+//            log::debug!("evaluate_streaming: gate[{i}] a={a} b={b} result={result}");
+//
+//            Ok::<(), garbled_snark_verifier::circuit::evaluation::Error>(())
+//        })?;
+//
+//    // Wait for progress thread to finish and print final newline
+//    gate_counter.store(usize::MAX, Ordering::Relaxed);
+//    let _ = progress_thread.join();
+//    println!();
+//
+//    log::debug!("evaluate_streaming: complete");
+//
+//    Ok(circuit
+//        .output_wires
+//        .iter()
+//        .map(move |&wire_id| (wire_id, wire_values[wire_id.0])))
+//}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("File-based Circuit Example");
@@ -837,10 +839,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Read and parse TOML config file
     let config_contents = std::fs::read_to_string(&config_file_path)
-        .map_err(|e| format!("Failed to read config file '{}': {}", config_file_path, e))?;
-    
+        .map_err(|e| format!("Failed to read config file '{config_file_path}': {e}"))?;
+
     let config: Config = toml::from_str(&config_contents)
-        .map_err(|e| format!("Failed to parse config file '{}': {}", config_file_path, e))?;
+        .map_err(|e| format!("Failed to parse config file '{config_file_path}': {e}"))?;
 
     let circuit_file_path = config.circuit_file_path;
     let num_of_garbling = config.num_of_garbling.unwrap_or_else(|| {
@@ -851,14 +853,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let save_path = config.save_path;
     let save_ciphertext_ids = config.save_ciphertext_ids;
     let worker_memory_gb = config.worker_memory_gb.unwrap_or(357);
-    let memory_check_interval = Duration::from_millis(
-        config.memory_check_interval_ms.unwrap_or(2000)
-    );
+    let memory_check_interval =
+        Duration::from_millis(config.memory_check_interval_ms.unwrap_or(2000));
 
     println!("Loading circuit file: {circuit_file_path}");
     println!("Using {num_of_garbling} garblings for parallel processing");
     println!("Save path: {save_path}");
-    println!("Save ciphertext for garbling IDs: {:?}", save_ciphertext_ids);
+    println!("Save ciphertext for garbling IDs: {save_ciphertext_ids:?}");
 
     // Create a FileGateProvider from the circuit file
     let file_gate_provider = FileGateProvider::new(&circuit_file_path)?;
@@ -956,9 +957,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             println!("\nAggregate Statistics:");
-            println!("  Total gates processed: {}", total_gates);
+            println!("  Total gates processed: {total_gates}");
             println!("  Total time: {:.2}s", total_duration.as_secs_f64());
-            println!("  Average throughput: {:.0} gates/s", avg_gates_per_sec);
+            println!("  Average throughput: {avg_gates_per_sec:.0} gates/s");
 
             println!("\nPer-thread Statistics:");
             for stats in &results {
@@ -977,7 +978,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Err(e) => {
-            println!("Multiple garbling failed: {:?}", e);
+            println!("Multiple garbling failed: {e:?}");
         }
     }
 
