@@ -1,24 +1,25 @@
 #![feature(maybe_uninit_array_assume_init)]
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fs,
     io::{self, BufWriter, Write},
     mem::MaybeUninit,
     ptr,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
     },
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
 use crossbeam::channel;
 use garbled_snark_verifier::{
-    circuit::{errors::CircuitError, file_gate_provider::FileGateProvider, GateProvider},
-    process_monitor::{ProcessMonitor, CircuitInfo, ThreadStatus},
+    Circuit, Delta, GarbledWire, GarbledWires, S, WireId,
+    circuit::{GateProvider, errors::CircuitError, file_gate_provider::FileGateProvider},
+    process_monitor::{CircuitInfo, ProcessMonitor, ThreadStatus},
     tui_monitor::run_tui,
-    Circuit, Delta, GarbledWire, GarbledWires, WireId, S,
 };
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
@@ -202,14 +203,14 @@ fn export_experiment_results_to_toml(
 
 fn get_system_memory_info() -> Option<(f64, f64)> {
     use std::fs;
-    
+
     // Try to read /proc/meminfo for more accurate system memory info
     if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
         let mut total_mem_kb = None;
         let mut available_mem_kb = None;
         let mut swap_total_kb = None;
         let mut swap_free_kb = None;
-        
+
         for line in meminfo.lines() {
             if line.starts_with("MemTotal:") {
                 total_mem_kb = line.split_whitespace().nth(1)?.parse::<u64>().ok();
@@ -221,15 +222,16 @@ fn get_system_memory_info() -> Option<(f64, f64)> {
                 swap_free_kb = line.split_whitespace().nth(1)?.parse::<u64>().ok();
             }
         }
-        
-        if let (Some(total), Some(available), Some(swap_total), Some(swap_free)) = 
-            (total_mem_kb, available_mem_kb, swap_total_kb, swap_free_kb) {
+
+        if let (Some(total), Some(available), Some(swap_total), Some(swap_free)) =
+            (total_mem_kb, available_mem_kb, swap_total_kb, swap_free_kb)
+        {
             let total_virtual_gb = (total + swap_total) as f64 / 1024.0 / 1024.0;
             let available_virtual_gb = (available + swap_free) as f64 / 1024.0 / 1024.0;
             return Some((total_virtual_gb, available_virtual_gb));
         }
     }
-    
+
     // Fallback to memory_stats crate if /proc/meminfo fails
     memory_stats::memory_stats().map(|stats| {
         let virtual_gb = stats.virtual_mem as f64 / 1024.0 / 1024.0 / 1024.0;
@@ -322,7 +324,8 @@ fn spawn_progress_monitor(
                 // For multi-threaded: use ANSI escape codes to update specific line
                 print!(
                     "\x1b[s\x1b[{}H{}Gate: {current_count}/{total_gates} ({percentage:.1}%) | Speed: {gates_per_second:.0} gates/s | {mem_info}\x1b[K\x1b[u",
-                    id + 1, thread_prefix
+                    id + 1,
+                    thread_prefix
                 );
             } else {
                 // For single-threaded: use carriage return
@@ -343,6 +346,23 @@ fn spawn_progress_monitor(
     })
 }
 
+fn discover_completed_garblings(base_path: &str) -> io::Result<HashSet<usize>> {
+    let mut completed = HashSet::new();
+    if let Ok(entries) = fs::read_dir(base_path) {
+        for entry in entries.flatten() {
+            if let Ok(id) = entry.file_name().to_string_lossy().parse::<usize>() {
+                let path = entry.path();
+                if path.join("ciphertext_hash.bin").exists()
+                    || path.join("output_labels.json").exists()
+                {
+                    completed.insert(id);
+                }
+            }
+        }
+    }
+    Ok(completed)
+}
+
 fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     circuit_file_path: &str,
     circuit_template: &Circuit<FileGateProvider>,
@@ -358,9 +378,21 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         .unwrap()
         .as_secs();
     let timestamp_dir = format!("{}/{}", save_path, timestamp);
-    
-    println!("Starting {} independent garbling threads with smart memory management...", num_of_garbling);
-    println!("Worker memory requirement: {}GB per thread", worker_memory_gb);
+
+    let skip_set = discover_completed_garblings(save_path).unwrap_or_default();
+    let total_tasks = num_of_garbling.saturating_sub(skip_set.len());
+
+    if !skip_set.is_empty() {
+        println!("Skipping garbling IDs: {:?}", skip_set);
+    }
+    println!(
+        "Starting {} independent garbling threads with smart memory management...",
+        total_tasks
+    );
+    println!(
+        "Worker memory requirement: {}GB per thread",
+        worker_memory_gb
+    );
     println!("Saving to timestamped directory: {}", timestamp_dir);
 
     // Initialize ProcessMonitor
@@ -370,7 +402,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         output_wire_count: circuit_template.output_wires.len(),
         total_gates: circuit_template.gates.gate_count().unwrap_or(0),
     };
-    
+
     let initial_memory_gb = if let Some(usage) = memory_stats::memory_stats() {
         usage.virtual_mem as f64 / 1024.0 / 1024.0 / 1024.0
     } else {
@@ -378,32 +410,42 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     };
 
     // Get system memory information
-    let (total_virtual_gb, available_virtual_gb) = get_system_memory_info()
-        .ok_or_else(|| CircuitError::GarblingFailed("Failed to get system memory stats".to_string()))?;
-    
-    println!("Total virtual memory (RAM + Swap): {:.2}GB", total_virtual_gb);
+    let (total_virtual_gb, available_virtual_gb) = get_system_memory_info().ok_or_else(|| {
+        CircuitError::GarblingFailed("Failed to get system memory stats".to_string())
+    })?;
+
+    println!(
+        "Total virtual memory (RAM + Swap): {:.2}GB",
+        total_virtual_gb
+    );
     println!("Available virtual memory: {:.2}GB", available_virtual_gb);
 
     // Calculate initial number of workers we can start
     let initial_workers = calculate_max_workers_by_virtual_memory(
         available_virtual_gb,
         worker_memory_gb,
-        num_of_garbling,
+        total_tasks,
     );
-    
-    println!("Starting with {} workers (limited by memory)", initial_workers);
-    
+
+    println!(
+        "Starting with {} workers (limited by memory)",
+        initial_workers
+    );
+
     ProcessMonitor::initialize(
         circuit_info,
         timestamp_dir.clone(),
         initial_memory_gb,
         initial_workers,
-        num_of_garbling,
+        total_tasks,
     );
 
     // Create task queue with all remaining tasks
     let mut pending_tasks = VecDeque::new();
     for task_id in 0..num_of_garbling {
+        if skip_set.contains(&task_id) {
+            continue;
+        }
         pending_tasks.push_back(TaskConfig {
             task_id,
             circuit_file_path: circuit_file_path.to_string(),
@@ -431,7 +473,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
             active_workers.lock().unwrap().push(handle);
         }
     }
-    
+
     // Start TUI in background thread
     let tui_handle = thread::spawn(|| {
         if let Err(e) = run_tui() {
@@ -443,33 +485,38 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     let pending_tasks_clone = Arc::clone(&pending_tasks);
     let active_workers_clone = Arc::clone(&active_workers);
     let completed_results_clone = Arc::clone(&completed_results);
-    
+
+    let poll_interval = Duration::from_millis(100);
+    let mut last_metrics = Instant::now();
+
     loop {
-        thread::sleep(memory_check_interval);
-        
-        // Update system metrics
-        if let Some((total_gb, available_gb)) = get_system_memory_info() {
-            // Get REAL current process memory usage from system
-            let process_memory_gb = if let Some(usage) = memory_stats::memory_stats() {
-                usage.virtual_mem as f64 / 1024.0 / 1024.0 / 1024.0
-            } else {
-                0.0 // If can't get real measurement, show 0 instead of fake calculations
-            };
-            
-            if let Some(monitor) = ProcessMonitor::instance() {
-                if let Ok(guard) = monitor.lock() {
-                    guard.update_system_metrics(
-                        total_gb,
-                        available_gb,
-                        process_memory_gb,
-                        pending_tasks_clone.lock().unwrap().len(),
-                    );
-                    guard.update_storage_metrics();
-                    guard.save_snapshot_to_file();
+        thread::sleep(poll_interval);
+
+        if last_metrics.elapsed() >= memory_check_interval {
+            if let Some((total_gb, available_gb)) = get_system_memory_info() {
+                // Get REAL current process memory usage from system
+                let process_memory_gb = if let Some(usage) = memory_stats::memory_stats() {
+                    usage.virtual_mem as f64 / 1024.0 / 1024.0 / 1024.0
+                } else {
+                    0.0 // If can't get real measurement, show 0 instead of fake calculations
+                };
+
+                if let Some(monitor) = ProcessMonitor::instance() {
+                    if let Ok(guard) = monitor.lock() {
+                        guard.update_system_metrics(
+                            total_gb,
+                            available_gb,
+                            process_memory_gb,
+                            pending_tasks_clone.lock().unwrap().len(),
+                        );
+                        guard.update_storage_metrics();
+                        guard.save_snapshot_to_file();
+                    }
                 }
             }
+            last_metrics = Instant::now();
         }
-        
+
         // Check for completed workers
         let mut workers = active_workers_clone.lock().unwrap();
         let mut i = 0;
@@ -508,19 +555,37 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                         }
                     }
                 }
+
+                // Try to start a new worker immediately when one finishes
+                if let Some((_, current_available_gb)) = get_system_memory_info() {
+                    let pending_count = pending_tasks_clone.lock().unwrap().len();
+                    let max_workers = calculate_max_workers_by_virtual_memory(
+                        current_available_gb,
+                        worker_memory_gb,
+                        pending_count + workers.len(),
+                    );
+
+                    if workers.len() < max_workers {
+                        if let Some(task) = pending_tasks_clone.lock().unwrap().pop_front() {
+                            let handle =
+                                spawn_worker_task::<H>(task, Arc::clone(&completed_results_clone));
+                            workers.push(handle);
+                        }
+                    }
+                }
             } else {
                 i += 1;
             }
         }
-        
+
         // Check if we can start more workers
         let pending_count = pending_tasks_clone.lock().unwrap().len();
         let active_count = workers.len();
-        
+
         if pending_count == 0 && active_count == 0 {
             break; // All tasks completed
         }
-        
+
         if pending_count > 0 {
             if let Some((_, current_available_gb)) = get_system_memory_info() {
                 let max_new_workers = calculate_max_workers_by_virtual_memory(
@@ -528,12 +593,13 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                     worker_memory_gb,
                     pending_count,
                 );
-                
+
                 let workers_to_start = max_new_workers.saturating_sub(active_count);
-                
+
                 for _ in 0..workers_to_start {
                     if let Some(task) = pending_tasks_clone.lock().unwrap().pop_front() {
-                        let handle = spawn_worker_task::<H>(task, Arc::clone(&completed_results_clone));
+                        let handle =
+                            spawn_worker_task::<H>(task, Arc::clone(&completed_results_clone));
                         workers.push(handle);
                     } else {
                         break;
@@ -545,7 +611,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
 
     // Wait for TUI to finish (user pressed 'q')
     let _ = tui_handle.join();
-    
+
     // Extract final results
     let results = Arc::try_unwrap(completed_results)
         .map_err(|_| CircuitError::GarblingFailed("Failed to extract results".to_string()))?
@@ -564,7 +630,7 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
         let mut rng = ChaCha8Rng::seed_from_u64(task.task_id as u64);
         let thread_dir = format!("{}/{}", task.timestamped_save_path, task.task_id);
         let _ = fs::create_dir_all(&thread_dir);
-        
+
         // Create a new FileGateProvider for this thread first to get gate count
         let file_gate_provider = match FileGateProvider::new(&task.circuit_file_path) {
             Ok(provider) => provider,
@@ -576,7 +642,7 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
                         guard.update_thread_error(task.task_id, error_msg.clone());
                     }
                 }
-                return Err(CircuitError::GarblingFailed(error_msg))
+                return Err(CircuitError::GarblingFailed(error_msg));
             }
         };
 
@@ -609,7 +675,7 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
                 guard.update_thread_status(task.task_id, ThreadStatus::Running);
             }
         }
-        
+
         match garble_with_streaming_thread::<H, _>(
             &thread_circuit,
             &mut rng,
@@ -718,7 +784,10 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     let save_dir = if !save_path.is_empty() && thread_id.is_some() {
         let dir_path = format!("{}/{}", save_path, thread_id.unwrap());
         fs::create_dir_all(&dir_path).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to create save directory {}: {}", dir_path, e))
+            CircuitError::GarblingFailed(format!(
+                "Failed to create save directory {}: {}",
+                dir_path, e
+            ))
         })?;
         Some(dir_path)
     } else {
@@ -729,7 +798,10 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     let mut ciphertext_writer = if should_save_ciphertexts && save_dir.is_some() {
         let ciphertext_path = format!("{}/ciphertexts.bin", save_dir.as_ref().unwrap());
         let file = fs::File::create(&ciphertext_path).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to create ciphertext file {}: {}", ciphertext_path, e))
+            CircuitError::GarblingFailed(format!(
+                "Failed to create ciphertext file {}: {}",
+                ciphertext_path, e
+            ))
         })?;
         Some(BufWriter::new(file))
     } else {
@@ -783,7 +855,10 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
             CircuitError::GarblingFailed(format!("Failed to serialize input labels: {}", e))
         })?;
         fs::write(&input_labels_path, input_labels_json).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to write input labels to {}: {}", input_labels_path, e))
+            CircuitError::GarblingFailed(format!(
+                "Failed to write input labels to {}: {}",
+                input_labels_path, e
+            ))
         })?;
     }
 
@@ -801,7 +876,11 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     // Spawn progress monitoring thread only if we don't have external counter (avoid double monitoring)
     let total_gates = circuit.gates.gate_count().unwrap_or(0);
     let progress_thread = if should_spawn_monitor {
-        Some(spawn_progress_monitor(gate_counter.clone(), total_gates, thread_id))
+        Some(spawn_progress_monitor(
+            gate_counter.clone(),
+            total_gates,
+            thread_id,
+        ))
     } else {
         None
     };
@@ -814,7 +893,7 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
                     .try_into()
                     .unwrap(),
             );
-            
+
             // Write ciphertext to file if writer is available
             if let Some(ref mut writer) = ciphertext_writer {
                 if let Err(e) = writer.write_all(&ciphertext.0) {
@@ -823,14 +902,14 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
                 }
             }
         }
-        
+
         // Flush the writer if it exists
         if let Some(ref mut writer) = ciphertext_writer {
             if let Err(e) = writer.flush() {
                 log::error!("Failed to flush ciphertext file: {}", e);
             }
         }
-        
+
         xor_result
     });
 
@@ -901,13 +980,19 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
             CircuitError::GarblingFailed(format!("Failed to serialize output labels: {}", e))
         })?;
         fs::write(&output_labels_path, output_labels_json).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to write output labels to {}: {}", output_labels_path, e))
+            CircuitError::GarblingFailed(format!(
+                "Failed to write output labels to {}: {}",
+                output_labels_path, e
+            ))
         })?;
 
         // Save ciphertext hash
         let hash_path = format!("{}/ciphertext_hash.bin", save_dir);
         fs::write(&hash_path, &xor_result.0).map_err(|e| {
-            CircuitError::GarblingFailed(format!("Failed to write ciphertext hash to {}: {}", hash_path, e))
+            CircuitError::GarblingFailed(format!(
+                "Failed to write ciphertext hash to {}: {}",
+                hash_path, e
+            ))
         })?;
     }
 
@@ -992,7 +1077,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read and parse TOML config file
     let config_contents = std::fs::read_to_string(&config_file_path)
         .map_err(|e| format!("Failed to read config file '{}': {}", config_file_path, e))?;
-    
+
     let config: Config = toml::from_str(&config_contents)
         .map_err(|e| format!("Failed to parse config file '{}': {}", config_file_path, e))?;
 
@@ -1005,14 +1090,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let save_path = config.save_path;
     let save_ciphertext_ids = config.save_ciphertext_ids;
     let worker_memory_gb = config.worker_memory_gb.unwrap_or(357);
-    let memory_check_interval = Duration::from_millis(
-        config.memory_check_interval_ms.unwrap_or(2000)
-    );
+    let memory_check_interval =
+        Duration::from_millis(config.memory_check_interval_ms.unwrap_or(2000));
 
     println!("Loading circuit file: {circuit_file_path}");
     println!("Using {num_of_garbling} garblings for parallel processing");
     println!("Save path: {save_path}");
-    println!("Save ciphertext for garbling IDs: {:?}", save_ciphertext_ids);
+    println!(
+        "Save ciphertext for garbling IDs: {:?}",
+        save_ciphertext_ids
+    );
 
     // Create a FileGateProvider from the circuit file
     let file_gate_provider = FileGateProvider::new(&circuit_file_path)?;
