@@ -1,4 +1,4 @@
-use std::{collections::HashMap, thread};
+use std::{collections::HashMap, thread, time::{Duration, Instant}, sync::atomic::{AtomicUsize, Ordering}, io::{self, Write}};
 
 use crossbeam::channel;
 use garbled_snark_verifier::{
@@ -65,6 +65,54 @@ fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     log::debug!("garble_streaming: delta={delta:?}");
 
     let (sender, receiver) = channel::bounded::<S>(10000);
+    
+    // Progress tracking with atomic counter
+    let gate_counter = std::sync::Arc::new(AtomicUsize::new(0));
+    
+    // Spawn progress monitoring thread
+    let counter_clone = gate_counter.clone();
+    let progress_thread = thread::spawn(move || {
+        let start_time = Instant::now();
+        let mut last_count = 0;
+        let mut last_time = start_time;
+        
+        loop {
+            thread::sleep(Duration::from_millis(1000));
+            
+            let current_count = counter_clone.load(Ordering::Relaxed);
+            let current_time = Instant::now();
+            
+            if current_count == 0 {
+                continue;
+            }
+            
+            let elapsed = (current_time - last_time).as_secs_f64();
+            let gates_per_second = if elapsed > 0.0 {
+                (current_count - last_count) as f64 / elapsed
+            } else {
+                0.0
+            };
+            
+            let mem_info = if let Some(usage) = memory_stats::memory_stats() {
+                format!("Physical: {:.2} MB, Virtual: {:.2} MB", 
+                    usage.physical_mem as f64 / 1024.0 / 1024.0,
+                    usage.virtual_mem as f64 / 1024.0 / 1024.0)
+            } else {
+                "Memory: N/A".to_string()
+            };
+            
+            print!("\rGate: {} | Speed: {:.0} gates/s | {}", 
+                current_count, gates_per_second, mem_info);
+            io::stdout().flush().unwrap();
+            
+            last_count = current_count;
+            last_time = current_time;
+            
+            if current_count > 0 && gates_per_second == 0.0 && elapsed > 3.0 {
+                break;
+            }
+        }
+    });
 
     let xor_thread = thread::spawn(move || {
         let mut xor_result = S::zero();
@@ -75,16 +123,7 @@ fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     });
 
     circuit.gates.gates().enumerate().try_for_each(|(i, g)| {
-        if i > 0 && i % 100_000_000 == 0 {
-            if let Some(usage) = memory_stats::memory_stats() {
-                println!(
-                    "Processed {} gates - Physical: {:.2} MB, Virtual: {:.2} MB",
-                    i,
-                    usage.physical_mem as f64 / 1024.0 / 1024.0,
-                    usage.virtual_mem as f64 / 1024.0 / 1024.0
-                );
-            }
-        }
+        gate_counter.store(i + 1, Ordering::Relaxed);
 
         match g.as_ref().garble::<H>(i, &mut wires, &delta, rng) {
             Ok(Some(row)) => {
@@ -112,6 +151,10 @@ fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     let xor_result = xor_thread
         .join()
         .map_err(|_| CircuitError::GarblingFailed("XOR thread join failed".to_string()))?;
+
+    // Wait for progress thread to finish and print final newline
+    let _ = progress_thread.join();
+    println!();
 
     log::debug!("garble_streaming: complete xor_result={:?}", xor_result);
     Ok((wires, delta, xor_result))
