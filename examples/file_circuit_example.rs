@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    io::{self, Write},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -105,10 +106,20 @@ fn spawn_progress_monitor(
                 String::new()
             };
 
-            println!(
-                "{}Gate: {current_count}/{total_gates} ({percentage:.1}%) | Speed: {gates_per_second:.0} gates/s | {mem_info}",
-                thread_prefix
-            );
+            if let Some(id) = thread_id {
+                // For multi-threaded: use ANSI escape codes to update specific line
+                print!(
+                    "\x1b[s\x1b[{}H{}Gate: {current_count}/{total_gates} ({percentage:.1}%) | Speed: {gates_per_second:.0} gates/s | {mem_info}\x1b[K\x1b[u",
+                    id + 1, thread_prefix
+                );
+            } else {
+                // For single-threaded: use carriage return
+                print!(
+                    "\r{}Gate: {current_count}/{total_gates} ({percentage:.1}%) | Speed: {gates_per_second:.0} gates/s | {mem_info}",
+                    thread_prefix
+                );
+            }
+            io::stdout().flush().unwrap();
 
             last_count = current_count;
             last_time = current_time;
@@ -126,6 +137,11 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     num_threads: usize,
 ) -> Result<Vec<ThreadStats>, CircuitError> {
     println!("Starting {} independent garbling threads...", num_threads);
+    
+    // Reserve space for thread progress lines
+    for _ in 0..num_threads {
+        println!();
+    }
 
     let handles: Vec<_> = (0..num_threads)
         .enumerate()
