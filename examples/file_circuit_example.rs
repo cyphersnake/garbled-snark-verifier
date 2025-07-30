@@ -1,6 +1,11 @@
+#![feature(maybe_uninit_array_assume_init)]
+
 use std::{
     collections::HashMap,
+    hash::Hash,
     io::{self, Write},
+    mem::{self, MaybeUninit},
+    ptr,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -9,6 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use bitcoin::hashes::hash160;
 use crossbeam::channel;
 use garbled_snark_verifier::{
     circuit::{errors::CircuitError, file_gate_provider::FileGateProvider, GateProvider},
@@ -137,7 +143,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     num_threads: usize,
 ) -> Result<Vec<ThreadStats>, CircuitError> {
     println!("Starting {} independent garbling threads...", num_threads);
-    
+
     // Reserve space for thread progress lines
     for _ in 0..num_threads {
         println!();
@@ -214,6 +220,25 @@ fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     garble_with_streaming_thread::<H, G>(circuit, rng, None)
 }
 
+#[inline(always)]
+pub fn concat_16<T: Copy>(a: &[T; 16], b: &[T; 16]) -> [T; 32] {
+    // --- choose ONE of the two lines below ---------------------------
+    // Modern compiler (≥1.70):
+    // let mut out: [MaybeUninit<T>; 32] = MaybeUninit::uninit_array();
+
+    // Legacy compiler:
+    let mut out: [MaybeUninit<T>; 32] =
+        unsafe { MaybeUninit::<[MaybeUninit<T>; 32]>::uninit().assume_init() };
+    // ------------------------------------------------------------------
+
+    unsafe {
+        ptr::copy_nonoverlapping(a.as_ptr(), out.as_mut_ptr() as *mut T, 16);
+        ptr::copy_nonoverlapping(b.as_ptr(), (out.as_mut_ptr() as *mut T).add(16), 16);
+
+        MaybeUninit::array_assume_init(out)
+    }
+}
+
 fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProvider>(
     circuit: &Circuit<G>,
     rng: &mut impl Rng,
@@ -239,6 +264,16 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
         wires.get_or_init(*wire_id, &mut issue_fn).unwrap();
     });
 
+    // Print bitcoin::hash160 of all public input wires (garbled) - accumulated
+    let mut all_input_bytes = Vec::new();
+    for &wire_id in &circuit.input_wires {
+        if let Some(garbled_wire) = wires.get(wire_id) {
+            all_input_bytes.extend_from_slice(&garbled_wire.zero_label.0);
+        }
+    }
+    let input_hash = hash160::Hash::hash(&all_input_bytes);
+    println!("Bitcoin hash160 of all public input wires (garbled): {}", input_hash);
+
     log::debug!("garble_streaming: delta={delta:?}");
 
     let (sender, receiver) = channel::bounded::<S>(10000);
@@ -251,10 +286,14 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     let total_gates = circuit.gates.gate_count().unwrap_or(0);
     let progress_thread = spawn_progress_monitor(gate_counter.clone(), total_gates, thread_id);
 
-    let xor_thread = thread::spawn(move || {
+    let ciphertext_accumulator_thread = thread::spawn(move || {
         let mut xor_result = S::zero();
         while let Ok(ciphertext) = receiver.recv() {
-            xor_result ^= &ciphertext;
+            xor_result = S(
+                blake3::hash(&concat_16(&xor_result.0, &ciphertext.0)).as_bytes()[0..16]
+                    .try_into()
+                    .unwrap(),
+            );
         }
         xor_result
     });
@@ -287,7 +326,7 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
 
     drop(sender);
 
-    let xor_result = xor_thread
+    let xor_result = ciphertext_accumulator_thread
         .join()
         .map_err(|_| CircuitError::GarblingFailed("XOR thread join failed".to_string()))?;
 
@@ -297,6 +336,16 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     gate_counter.store(usize::MAX, Ordering::Relaxed);
     let _ = progress_thread.join();
     println!();
+
+    // Print bitcoin::hash160 of all output wires (garbled) - after full garbling process
+    let mut all_output_bytes = Vec::new();
+    for &wire_id in &circuit.output_wires {
+        if let Some(garbled_wire) = wires.get(wire_id) {
+            all_output_bytes.extend_from_slice(&garbled_wire.zero_label.0);
+        }
+    }
+    let output_hash = hash160::Hash::hash(&all_output_bytes);
+    println!("Bitcoin hash160 of all output wires (garbled): {}", output_hash);
 
     log::debug!("garble_streaming: complete xor_result={xor_result:?}");
     Ok((wires, delta, xor_result))
