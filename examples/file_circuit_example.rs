@@ -7,16 +7,14 @@ use std::{
     },
     thread,
     time::{Duration, Instant},
-    usize,
 };
 
-use bitvec::access::BitAccess;
 use crossbeam::channel;
 use garbled_snark_verifier::{
     circuit::{errors::CircuitError, file_gate_provider::FileGateProvider, GateProvider},
     Circuit, Delta, GarbledWire, GarbledWires, WireId, S,
 };
-use rand::Rng;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 
 // Include wire values generated from main branch
 include!("../wire_values.rs");
@@ -116,47 +114,67 @@ fn spawn_progress_monitor(
     })
 }
 
-//fn run_multiple_garbling<H: digest::Digest + Default + Clone, G: GateProvider + Clone + Send>(
-//    circuit: &Circuit<G>,
-//    num_threads: usize,
-//) -> Result<Vec<ThreadStats>, CircuitError> {
-//    println!("Starting {} independent garbling threads...", num_threads);
-//
-//    let handles: Vec<_> = (0..num_threads)
-//        .enumerate()
-//        .map(|(id, thread_id)| {
-//            let circuit_clone = circuit.clone();
-//            thread::spawn(move || {
-//                let start_time = Instant::now();
-//                let mut rng = StdRng::seed_from_u64(id as u64);
-//
-//                match garble_with_streaming::<H, _>(&circuit_clone, &mut rng) {
-//                    Ok((_, delta, xor_result)) => {
-//                        let duration = start_time.elapsed();
-//                        Ok(ThreadStats {
-//                            thread_id,
-//                            gates_processed: circuit_clone.gates.gate_count().unwrap_or(0),
-//                            duration,
-//                            delta,
-//                            xor_result,
-//                        })
-//                    }
-//                    Err(e) => Err(e),
-//                }
-//            })
-//        })
-//        .collect();
-//
-//    let mut results = Vec::new();
-//    for handle in handles {
-//        let result = handle
-//            .join()
-//            .map_err(|_| CircuitError::GarblingFailed("Thread join failed".to_string()))?;
-//        results.push(result?);
-//    }
-//
-//    Ok(results)
-//}
+fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
+    circuit_file_path: &str,
+    circuit_template: &Circuit<FileGateProvider>,
+    num_threads: usize,
+) -> Result<Vec<ThreadStats>, CircuitError> {
+    println!("Starting {} independent garbling threads...", num_threads);
+
+    let handles: Vec<_> = (0..num_threads)
+        .enumerate()
+        .map(|(id, thread_id)| {
+            let circuit_file_path = circuit_file_path.to_string();
+            let input_wires = circuit_template.input_wires.clone();
+            let output_wires = circuit_template.output_wires.clone();
+            let num_wire = circuit_template.num_wire;
+            
+            thread::spawn(move || {
+                let start_time = Instant::now();
+                let mut rng = StdRng::seed_from_u64(id as u64);
+
+                // Create a new FileGateProvider for this thread
+                let file_gate_provider = match FileGateProvider::new(&circuit_file_path) {
+                    Ok(provider) => provider,
+                    Err(e) => return Err(CircuitError::GarblingFailed(format!("Failed to create FileGateProvider: {}", e))),
+                };
+
+                // Create a new circuit for this thread
+                let thread_circuit = Circuit {
+                    num_wire,
+                    input_wires,
+                    output_wires,
+                    gates: file_gate_provider,
+                    gate_count: Default::default(),
+                };
+
+                match garble_with_streaming::<H, _>(&thread_circuit, &mut rng) {
+                    Ok((_, delta, xor_result)) => {
+                        let duration = start_time.elapsed();
+                        Ok(ThreadStats {
+                            thread_id,
+                            gates_processed: thread_circuit.gates.gate_count().unwrap_or(0),
+                            duration,
+                            delta,
+                            xor_result,
+                        })
+                    }
+                    Err(e) => Err(e),
+                }
+            })
+        })
+        .collect();
+
+    let mut results = Vec::new();
+    for handle in handles {
+        let result = handle
+            .join()
+            .map_err(|_| CircuitError::GarblingFailed("Thread join failed".to_string()))?;
+        results.push(result?);
+    }
+
+    Ok(results)
+}
 
 fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     circuit: &Circuit<G>,
@@ -398,50 +416,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Final memory usage: {final_mem_info}");
 
     println!("\nTesting multiple parallel garbling...");
-    //match run_multiple_garbling::<DefaultHasher, _>(&file_circuit, num_threads) {
-    //    Ok(results) => {
-    //        println!(
-    //            "All {} garbling threads completed successfully!",
-    //            results.len()
-    //        );
+    match run_multiple_garbling::<DefaultHasher>(&circuit_file_path, &file_circuit, num_threads) {
+        Ok(results) => {
+            println!(
+                "All {} garbling threads completed successfully!",
+                results.len()
+            );
 
-    //        let total_gates: usize = results.iter().map(|r| r.gates_processed).sum();
-    //        let total_duration = results
-    //            .iter()
-    //            .map(|r| r.duration)
-    //            .max()
-    //            .unwrap_or(Duration::ZERO);
-    //        let avg_gates_per_sec = if total_duration.as_secs_f64() > 0.0 {
-    //            total_gates as f64 / total_duration.as_secs_f64()
-    //        } else {
-    //            0.0
-    //        };
+            let total_gates: usize = results.iter().map(|r| r.gates_processed).sum();
+            let total_duration = results
+                .iter()
+                .map(|r| r.duration)
+                .max()
+                .unwrap_or(Duration::ZERO);
+            let avg_gates_per_sec = if total_duration.as_secs_f64() > 0.0 {
+                total_gates as f64 / total_duration.as_secs_f64()
+            } else {
+                0.0
+            };
 
-    //        println!("\nAggregate Statistics:");
-    //        println!("  Total gates processed: {}", total_gates);
-    //        println!("  Total time: {:.2}s", total_duration.as_secs_f64());
-    //        println!("  Average throughput: {:.0} gates/s", avg_gates_per_sec);
+            println!("\nAggregate Statistics:");
+            println!("  Total gates processed: {}", total_gates);
+            println!("  Total time: {:.2}s", total_duration.as_secs_f64());
+            println!("  Average throughput: {:.0} gates/s", avg_gates_per_sec);
 
-    //        println!("\nPer-thread Statistics:");
-    //        for stats in &results {
-    //            let gates_per_sec = if stats.duration.as_secs_f64() > 0.0 {
-    //                stats.gates_processed as f64 / stats.duration.as_secs_f64()
-    //            } else {
-    //                0.0
-    //            };
-    //            println!(
-    //                "  Thread {}: {} gates in {:.2}s ({:.0} gates/s)",
-    //                stats.thread_id,
-    //                stats.gates_processed,
-    //                stats.duration.as_secs_f64(),
-    //                gates_per_sec
-    //            );
-    //        }
-    //    }
-    //    Err(e) => {
-    //        println!("Multiple garbling failed: {:?}", e);
-    //    }
-    //}
+            println!("\nPer-thread Statistics:");
+            for stats in &results {
+                let gates_per_sec = if stats.duration.as_secs_f64() > 0.0 {
+                    stats.gates_processed as f64 / stats.duration.as_secs_f64()
+                } else {
+                    0.0
+                };
+                println!(
+                    "  Thread {}: {} gates in {:.2}s ({:.0} gates/s)",
+                    stats.thread_id,
+                    stats.gates_processed,
+                    stats.duration.as_secs_f64(),
+                    gates_per_sec
+                );
+            }
+        }
+        Err(e) => {
+            println!("Multiple garbling failed: {:?}", e);
+        }
+    }
 
     println!("\nFile-based circuit loading successful!");
     println!("Next steps: Implement input/output wire detection for your specific circuit");
