@@ -245,7 +245,11 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         total_gates: circuit_template.gates.gate_count().unwrap_or(0),
     };
     
-    let initial_memory_gb = 356.0; // Accurate estimation from actual runs
+    let initial_memory_gb = if let Some(usage) = memory_stats::memory_stats() {
+        usage.virtual_mem as f64 / 1024.0 / 1024.0 / 1024.0
+    } else {
+        1.0 // Start with minimal baseline if can't detect
+    };
 
     // Get system memory information
     let (total_virtual_gb, available_virtual_gb) = get_system_memory_info()
@@ -318,7 +322,12 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         
         // Update system metrics
         if let Some((total_gb, available_gb)) = get_system_memory_info() {
-            let process_memory_gb = 356.0; // Use accurate estimation
+            // Get REAL current process memory usage from system
+            let process_memory_gb = if let Some(usage) = memory_stats::memory_stats() {
+                usage.virtual_mem as f64 / 1024.0 / 1024.0 / 1024.0
+            } else {
+                0.0 // If can't get real measurement, show 0 instead of fake calculations
+            };
             
             if let Some(monitor) = ProcessMonitor::instance() {
                 if let Ok(guard) = monitor.lock() {

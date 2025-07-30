@@ -184,6 +184,12 @@ impl ProcessMonitor {
         }
     }
 
+    pub fn update_thread_memory(&self, thread_id: usize, memory_gb: f64) {
+        if let Some(thread) = self.threads.lock().unwrap().get_mut(&thread_id) {
+            thread.memory_usage_gb = memory_gb;
+        }
+    }
+
     pub fn update_system_metrics(
         &self,
         total_memory_gb: f64,

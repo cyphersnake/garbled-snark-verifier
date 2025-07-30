@@ -203,7 +203,7 @@ impl TuiApp {
                         error_msg
                     )
                 } else {
-                    // Normal progress display
+                    // Normal progress display - no per-thread memory, show global info
                     let progress_bar = create_progress_bar(thread.progress_percent, 10);
                     let hash_display = if let Some(ref hash) = thread.input_hash160 {
                         format!(" | Hash: {}...", &hash[0..8.min(hash.len())])
