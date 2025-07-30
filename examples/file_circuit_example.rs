@@ -545,12 +545,6 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     should_save_ciphertexts: bool,
     external_gate_counter: Option<Arc<AtomicUsize>>,
 ) -> Result<(GarbledWires, S), CircuitError> {
-    log::debug!(
-        "garble_streaming: start wires={} gates={:?}",
-        circuit.num_wire,
-        circuit.gates.gate_count()
-    );
-
     // Create save directory if needed
     let save_dir = if !save_path.is_empty() && thread_id.is_some() {
         let dir_path = format!("{}/{}", save_path, thread_id.unwrap());
@@ -627,8 +621,6 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
         })?;
     }
 
-    log::debug!("garble_streaming: delta={delta:?}");
-
     let (sender, receiver) = channel::bounded::<S>(10000);
 
     // Progress tracking with atomic counter
@@ -663,7 +655,7 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
             if let Some(ref mut writer) = ciphertext_writer
                 && let Err(e) = writer.write_all(&ciphertext.0)
             {
-                log::error!("Failed to write ciphertext to file: {e}");
+                eprintln!("Failed to write ciphertext to file: {e}");
                 break;
             }
         }
@@ -672,7 +664,7 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
         if let Some(ref mut writer) = ciphertext_writer
             && let Err(e) = writer.flush()
         {
-            log::error!("Failed to flush ciphertext file: {e}");
+            eprintln!("Failed to flush ciphertext file: {e}");
         }
 
         xor_result
@@ -683,18 +675,14 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
 
         match g.as_ref().garble::<H>(i, &mut wires, &delta, rng) {
             Ok(Some(row)) => {
-                log::debug!("garble_streaming: gate[{i}] table_entries={row:?}");
                 if let Err(err) = sender.send(row) {
                     return Err(CircuitError::GarblingFailed(format!("Send failed {err:?}")));
                 }
                 Ok(())
             }
-            Ok(None) => {
-                log::debug!("garble_streaming: gate[{i}] free");
-                Ok(())
-            }
+            Ok(None) => Ok(()),
             Err(err) => {
-                log::error!("garble_streaming: gate[{i}] error={err:?}");
+                eprintln!("garble_streaming: gate[{i}] error={err:?}");
                 Err(err)
             }
         }?;
@@ -759,7 +747,6 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
         })?;
     }
 
-    log::debug!("garble_streaming: complete xor_result={xor_result:?}");
     Ok((wires, xor_result))
 }
 
