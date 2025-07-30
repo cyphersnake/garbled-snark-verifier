@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    io::{self, Write},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -57,6 +56,7 @@ struct ThreadStats {
 fn spawn_progress_monitor(
     gate_counter: Arc<AtomicUsize>,
     total_gates: usize,
+    thread_id: Option<usize>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let start_time = Instant::now();
@@ -99,10 +99,16 @@ fn spawn_progress_monitor(
                 0.0
             };
 
-            print!(
-                "\rGate: {current_count}/{total_gates} ({percentage:.1}%) | Speed: {gates_per_second:.0} gates/s | {mem_info}"
+            let thread_prefix = if let Some(id) = thread_id {
+                format!("Thread {}: ", id)
+            } else {
+                String::new()
+            };
+
+            println!(
+                "{}Gate: {current_count}/{total_gates} ({percentage:.1}%) | Speed: {gates_per_second:.0} gates/s | {mem_info}",
+                thread_prefix
             );
-            io::stdout().flush().unwrap();
 
             last_count = current_count;
             last_time = current_time;
@@ -148,7 +154,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
                     gate_count: Default::default(),
                 };
 
-                match garble_with_streaming::<H, _>(&thread_circuit, &mut rng) {
+                match garble_with_streaming_thread::<H, _>(&thread_circuit, &mut rng, Some(thread_id)) {
                     Ok((_, delta, xor_result)) => {
                         let duration = start_time.elapsed();
                         Ok(ThreadStats {
@@ -180,6 +186,14 @@ fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
     circuit: &Circuit<G>,
     rng: &mut impl Rng,
 ) -> Result<(GarbledWires, Delta, S), CircuitError> {
+    garble_with_streaming_thread::<H, G>(circuit, rng, None)
+}
+
+fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProvider>(
+    circuit: &Circuit<G>,
+    rng: &mut impl Rng,
+    thread_id: Option<usize>,
+) -> Result<(GarbledWires, Delta, S), CircuitError> {
     log::debug!(
         "garble_streaming: start wires={} gates={:?}",
         circuit.num_wire,
@@ -210,7 +224,7 @@ fn garble_with_streaming<H: digest::Digest + Default + Clone, G: GateProvider>(
 
     // Spawn progress monitoring thread
     let total_gates = circuit.gates.gate_count().unwrap_or(0);
-    let progress_thread = spawn_progress_monitor(gate_counter.clone(), total_gates);
+    let progress_thread = spawn_progress_monitor(gate_counter.clone(), total_gates, thread_id);
 
     let xor_thread = thread::spawn(move || {
         let mut xor_result = S::zero();
@@ -293,7 +307,7 @@ fn evaluate_with_streaming<G: GateProvider>(
 
     // Spawn progress monitoring thread
     let total_gates = circuit.gates.gate_count().unwrap_or(0);
-    let progress_thread = spawn_progress_monitor(gate_counter.clone(), total_gates);
+    let progress_thread = spawn_progress_monitor(gate_counter.clone(), total_gates, None);
 
     // Process gates with progress tracking
     circuit
