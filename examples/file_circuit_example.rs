@@ -62,6 +62,8 @@ struct LabelPair([u8; 16], [u8; 16]);
 struct Config {
     circuit_file_path: String,
     num_of_garbling: Option<usize>,
+    /// Garbling IDs that should be skipped
+    skip_garbling_ids: Option<Vec<usize>>,
     save_path: String,
     save_ciphertext_ids: Vec<usize>,
     worker_memory_gb: Option<u64>,
@@ -368,6 +370,7 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
     circuit_template: &Circuit<FileGateProvider>,
     num_of_garbling: usize,
     save_path: &str,
+    skip_garbling_ids: &[usize],
     save_ciphertext_ids: &[usize],
     worker_memory_gb: u64,
     memory_check_interval: Duration,
@@ -379,7 +382,13 @@ fn run_multiple_garbling<H: digest::Digest + Default + Clone>(
         .as_secs();
     let timestamp_dir = format!("{}/{}", save_path, timestamp);
 
-    let skip_set = discover_completed_garblings(save_path).unwrap_or_default();
+    // Combine skip list from config with already completed garblings
+    let mut skip_set: HashSet<usize> = skip_garbling_ids.iter().copied().collect();
+    skip_set.extend(
+        discover_completed_garblings(save_path).map_err(|e| {
+            CircuitError::GarblingFailed(format!("Failed to scan save directory: {}", e))
+        })?,
+    );
     let total_tasks = num_of_garbling.saturating_sub(skip_set.len());
 
     if !skip_set.is_empty() {
@@ -1174,6 +1183,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &file_circuit,
         num_of_garbling,
         &save_path,
+        config
+            .skip_garbling_ids
+            .as_deref()
+            .unwrap_or_default(),
         &save_ciphertext_ids,
         worker_memory_gb,
         memory_check_interval,

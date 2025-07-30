@@ -16,6 +16,9 @@ save_path = "./garbled_data"
 # All garblings always save input/output labels and ciphertext hash
 save_ciphertext_ids = [0, 1, 2, 3, 4, 5, 6, 7]
 
+# Specific garbling IDs to skip entirely
+# skip_garbling_ids = [10, 11]
+
 # Any existing garbling directories in `save_path` will be skipped automatically
 
 # Smart Memory Management Settings
