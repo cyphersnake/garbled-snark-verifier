@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bitcoin::hashes::hash160;
+use bitcoin::hashes::{hash160, Hash as _H};
 use crossbeam::channel;
 use garbled_snark_verifier::{
     circuit::{errors::CircuitError, file_gate_provider::FileGateProvider, GateProvider},
@@ -267,12 +267,18 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     // Print bitcoin::hash160 of all public input wires (garbled) - accumulated
     let mut all_input_bytes = Vec::new();
     for &wire_id in &circuit.input_wires {
-        if let Some(garbled_wire) = wires.get(wire_id) {
-            all_input_bytes.extend_from_slice(&garbled_wire.zero_label.0);
+        if let Ok(garbled_wire) = wires.get(wire_id) {
+            all_input_bytes.extend_from_slice(&garbled_wire.label0.0);
+            all_input_bytes.extend_from_slice(&garbled_wire.label1.0);
         }
     }
-    let input_hash = hash160::Hash::hash(&all_input_bytes);
-    println!("Bitcoin hash160 of all public input wires (garbled): {}", input_hash);
+    let input_hash =
+        <bitcoin::hashes::hash160::Hash as bitcoin::hashes::Hash>::hash(&all_input_bytes);
+
+    println!(
+        "Bitcoin hash160 of all public input wires (garbled): {:?}",
+        input_hash
+    );
 
     log::debug!("garble_streaming: delta={delta:?}");
 
@@ -340,12 +346,18 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     // Print bitcoin::hash160 of all output wires (garbled) - after full garbling process
     let mut all_output_bytes = Vec::new();
     for &wire_id in &circuit.output_wires {
-        if let Some(garbled_wire) = wires.get(wire_id) {
-            all_output_bytes.extend_from_slice(&garbled_wire.zero_label.0);
+        if let Ok(garbled_wire) = wires.get(wire_id) {
+            all_output_bytes.extend_from_slice(&garbled_wire.label0.0);
+            all_output_bytes.extend_from_slice(&garbled_wire.label1.0);
         }
     }
-    let output_hash = hash160::Hash::hash(&all_output_bytes);
-    println!("Bitcoin hash160 of all output wires (garbled): {}", output_hash);
+    let output_hash =
+        <bitcoin::hashes::hash160::Hash as bitcoin::hashes::Hash>::hash(&all_output_bytes);
+
+    println!(
+        "Bitcoin hash160 of all output wires (garbled): {}",
+        output_hash
+    );
 
     log::debug!("garble_streaming: complete xor_result={xor_result:?}");
     Ok((wires, delta, xor_result))
