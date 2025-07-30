@@ -35,6 +35,8 @@ pub struct ThreadMetrics {
     pub start_time: Instant,
     pub duration: Duration,
     pub speed_history: VecDeque<f64>,
+    pub error_message: Option<String>,
+    pub input_hash160: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -131,6 +133,8 @@ impl ProcessMonitor {
             start_time: Instant::now(),
             duration: Duration::ZERO,
             speed_history: VecDeque::with_capacity(60), // Keep 1 minute of history
+            error_message: None,
+            input_hash160: None,
         };
 
         self.threads.lock().unwrap().insert(thread_id, thread_metrics);
@@ -159,6 +163,24 @@ impl ProcessMonitor {
     pub fn update_thread_result(&self, thread_id: usize, xor_result: S) {
         if let Some(thread) = self.threads.lock().unwrap().get_mut(&thread_id) {
             thread.xor_result = Some(xor_result);
+        }
+    }
+
+    pub fn update_thread_error(&self, thread_id: usize, error_message: String) {
+        if let Some(thread) = self.threads.lock().unwrap().get_mut(&thread_id) {
+            thread.status = ThreadStatus::Error;
+            thread.error_message = Some(error_message);
+            thread.duration = thread.start_time.elapsed();
+            
+            // Update active workers count
+            let mut system = self.system.lock().unwrap();
+            system.active_workers = system.active_workers.saturating_sub(1);
+        }
+    }
+
+    pub fn update_thread_hash160(&self, thread_id: usize, hash160: String) {
+        if let Some(thread) = self.threads.lock().unwrap().get_mut(&thread_id) {
+            thread.input_hash160 = Some(hash160);
         }
     }
 
@@ -281,6 +303,8 @@ impl ProcessMonitor {
                 } else {
                     0.0
                 },
+                error_message: thread.error_message.clone(),
+                input_hash160: thread.input_hash160.clone(),
             });
         }
 
@@ -317,6 +341,8 @@ pub struct ThreadSnapshot {
     pub status: ThreadStatus,
     pub duration: Duration,
     pub progress_percent: f64,
+    pub error_message: Option<String>,
+    pub input_hash160: Option<String>,
 }
 
 #[derive(Debug, Clone)]

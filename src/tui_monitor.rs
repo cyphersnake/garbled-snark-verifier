@@ -170,13 +170,22 @@ impl TuiApp {
     }
 
     fn render_thread_list(&self, f: &mut Frame, area: Rect, snapshot: &Option<MonitorSnapshot>) {
+        let thread_count = if let Some(snap) = snapshot { 
+            snap.threads.len() 
+        } else { 
+            0 
+        };
+        
         let block = Block::default()
             .borders(Borders::ALL)
-            .title("Active Workers")
+            .title(format!("Active Workers [{}]", thread_count))
             .border_style(Style::default().fg(Color::Green));
 
         let items: Vec<ListItem> = if let Some(snap) = snapshot {
-            snap.threads.iter().map(|thread| {
+            if snap.threads.is_empty() {
+                vec![ListItem::new("No worker threads detected")]
+            } else {
+                snap.threads.iter().map(|thread| {
                 let status_char = match thread.status {
                     ThreadStatus::Starting => "⏳",
                     ThreadStatus::Running => "🔄",
@@ -185,25 +194,49 @@ impl TuiApp {
                     ThreadStatus::Error => "❌",
                 };
 
-                let progress_bar = create_progress_bar(thread.progress_percent, 20);
-                
-                let content = format!(
-                    "T{}: {} {:.1}% | {:.2}M g/s | {} | {:.1}GB | {}M gates",
-                    thread.thread_id,
-                    progress_bar,
-                    thread.progress_percent,
-                    thread.gates_per_second / 1_000_000.0,
-                    format_duration(thread.duration),
-                    thread.memory_usage_gb,
-                    thread.current_gate / 1_000_000
-                );
+                let content = if thread.status == ThreadStatus::Error {
+                    // Show error message for failed threads
+                    let error_msg = thread.error_message.as_deref().unwrap_or("Unknown error");
+                    format!(
+                        "T{}: ERROR - {}",
+                        thread.thread_id,
+                        error_msg
+                    )
+                } else {
+                    // Normal progress display
+                    let progress_bar = create_progress_bar(thread.progress_percent, 10);
+                    let hash_display = if let Some(ref hash) = thread.input_hash160 {
+                        format!(" | Hash: {}...", &hash[0..8.min(hash.len())])
+                    } else {
+                        String::new()
+                    };
+                    format!(
+                        "T{}: {} {:.1}% | {:.2}M g/s | {} | {}M gates{}",
+                        thread.thread_id,
+                        progress_bar,
+                        thread.progress_percent,
+                        thread.gates_per_second / 1_000_000.0,
+                        format_duration(thread.duration),
+                        thread.current_gate / 1_000_000,
+                        hash_display
+                    )
+                };
 
-                ListItem::new(Line::from(vec![
-                    Span::raw(status_char),
-                    Span::raw(" "),
-                    Span::raw(content),
-                ]))
+                if thread.status == ThreadStatus::Error {
+                    ListItem::new(Line::from(vec![
+                        Span::raw(status_char),
+                        Span::raw(" "),
+                        Span::styled(content, Style::default().fg(Color::Red)),
+                    ]))
+                } else {
+                    ListItem::new(Line::from(vec![
+                        Span::raw(status_char),
+                        Span::raw(" "),
+                        Span::raw(content),
+                    ]))
+                }
             }).collect()
+            }
         } else {
             vec![ListItem::new("No worker data available")]
         };

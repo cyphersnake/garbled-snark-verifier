@@ -404,28 +404,33 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
         let start_time = Instant::now();
         let mut rng = ChaCha8Rng::seed_from_u64(task.task_id as u64);
         
+        // Create a new FileGateProvider for this thread first to get gate count
+        let file_gate_provider = match FileGateProvider::new(&task.circuit_file_path) {
+            Ok(provider) => provider,
+            Err(e) => {
+                let error_msg = format!("Failed to create FileGateProvider: {}", e);
+                // Update ProcessMonitor with error
+                if let Some(monitor) = ProcessMonitor::instance() {
+                    if let Ok(guard) = monitor.lock() {
+                        guard.update_thread_error(task.task_id, error_msg.clone());
+                    }
+                }
+                return Err(CircuitError::GarblingFailed(error_msg))
+            }
+        };
+
+        let total_gates = file_gate_provider.gate_count().unwrap_or(0);
+
         // Register with ProcessMonitor
         let gate_counter = if let Some(monitor) = ProcessMonitor::instance() {
             if let Ok(guard) = monitor.lock() {
                 guard.update_thread_status(task.task_id, ThreadStatus::Starting);
-                let total_gates = task.circuit_file_path.len(); // Placeholder - should get actual gate count
                 Some(guard.register_thread(task.task_id, total_gates))
             } else {
                 None
             }
         } else {
             None
-        };
-
-        // Create a new FileGateProvider for this thread
-        let file_gate_provider = match FileGateProvider::new(&task.circuit_file_path) {
-            Ok(provider) => provider,
-            Err(e) => {
-                return Err(CircuitError::GarblingFailed(format!(
-                    "Failed to create FileGateProvider: {}",
-                    e
-                )))
-            }
         };
 
         // Create a new circuit for this thread
@@ -471,10 +476,10 @@ fn spawn_worker_task<H: digest::Digest + Default + Clone>(
                 })
             }
             Err(e) => {
-                // Update error status
+                // Update error status with error message
                 if let Some(monitor) = ProcessMonitor::instance() {
                     if let Ok(guard) = monitor.lock() {
-                        guard.update_thread_status(task.task_id, ThreadStatus::Error);
+                        guard.update_thread_error(task.task_id, format!("{:?}", e));
                     }
                 }
                 Err(e)
@@ -570,10 +575,14 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     let input_hash =
         <bitcoin::hashes::hash160::Hash as bitcoin::hashes::Hash>::hash(&all_input_bytes);
 
-    println!(
-        "Bitcoin hash160 of all public input wires (garbled): {:?}",
-        input_hash
-    );
+    // Report hash160 to ProcessMonitor instead of printing
+    if let Some(id) = thread_id {
+        if let Some(monitor) = ProcessMonitor::instance() {
+            if let Ok(guard) = monitor.lock() {
+                guard.update_thread_hash160(id, format!("{:?}", input_hash));
+            }
+        }
+    }
 
     // Save input labels if save directory exists
     if let Some(ref save_dir) = save_dir {
@@ -663,7 +672,7 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
         Ok(())
     })?;
 
-    println!("eval done");
+    // eval done - don't print to avoid TUI interference
 
     drop(sender);
 
@@ -671,13 +680,13 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
         .join()
         .map_err(|_| CircuitError::GarblingFailed("XOR thread join failed".to_string()))?;
 
-    println!("xor_result: {xor_result:?}");
+    // xor_result computed - don't print to avoid TUI interference
 
     // Wait for progress thread to finish and print final newline
     if let Some(thread) = progress_thread {
         gate_counter.store(usize::MAX, Ordering::Relaxed);
         let _ = thread.join();
-        println!();
+        // newline - removed to avoid TUI interference
     }
 
     // Print bitcoin::hash160 of all output wires (garbled) - after full garbling process
@@ -690,10 +699,7 @@ fn garble_with_streaming_thread<H: digest::Digest + Default + Clone, G: GateProv
     }
     let output_hash =
         <bitcoin::hashes::hash160::Hash as bitcoin::hashes::Hash>::hash(&all_output_bytes);
-    println!(
-        "Bitcoin hash160 of all output wires (garbled): {}",
-        output_hash
-    );
+    // Output hash computed - don't print to avoid TUI interference
 
     // Save output labels and ciphertext hash if save directory exists
     if let Some(ref save_dir) = save_dir {
