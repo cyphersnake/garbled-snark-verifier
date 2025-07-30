@@ -1,0 +1,4 @@
+# Path to the directory produced by `file_circuit_example.rs`
+# This directory should contain subdirectories 0..180 each with
+# `inputs_labels.json`, `output_labels.json` and `ciphertext_hash.bin` files.
+data_root = "./garbled_data/20240101_000000"
