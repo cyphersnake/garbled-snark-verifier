@@ -27,6 +27,7 @@ pub fn elf() -> &'static [u8] {
     include_bytes!(env!("SP1_ELF_sp1-soldering-guest"))
 }
 
+#[derive(Debug)]
 pub struct SolderingProof {
     pub proof: Groth16Bn254Proof,
     pub deltas: Vec<Vec<(u128, u128)>>,
